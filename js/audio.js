@@ -1,0 +1,281 @@
+// Sound: plucked-string synthesis (Karplus-Strong), chord strums, metronome, and a look-ahead scheduler.
+
+import { TimeMap, computeBars, barAt, chordIndexAt } from "./model.js";
+import { chordShape, TUNINGS } from "./chords.js";
+
+export class Engine {
+  constructor() {
+    this.ctx = null;
+    this.cache = new Map();
+  }
+  ensure() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.8;
+      this.master.connect(this.ctx.destination);
+      this.melodyBus = this.ctx.createGain();
+      this.chordBus = this.ctx.createGain();
+      this.clickBus = this.ctx.createGain();
+      this.melodyBus.connect(this.master);
+      this.chordBus.connect(this.master);
+      this.clickBus.connect(this.master);
+    }
+    if (this.ctx.state === "suspended") this.ctx.resume();
+    return this.ctx;
+  }
+  setVolume(v) { this.ensure(); this.master.gain.value = v; }
+  setBus(name, v) { this.ensure(); this[name].gain.value = v; }
+
+  pluck(midi) {
+    if (this.cache.has(midi)) return this.cache.get(midi);
+    const ctx = this.ctx, sr = ctx.sampleRate;
+    const f = 440 * 2 ** ((midi - 69) / 12);
+    const N = Math.max(2, Math.round(sr / f));
+    const len = Math.floor(sr * 2.4);
+    const buf = ctx.createBuffer(1, len, sr);
+    const out = buf.getChannelData(0);
+    const ring = new Float32Array(N);
+    // soft noise burst: averaged twice so the attack is warm like a nylon string
+    let prev = 0;
+    for (let i = 0; i < N; i++) { const r = Math.random() * 2 - 1; prev = 0.6 * prev + 0.4 * r; ring[i] = prev; }
+    const decay = Math.min(0.9985, 0.9965 + (60 - Math.min(midi, 90)) * 0.00004);
+    let idx = 0;
+    for (let i = 0; i < len; i++) {
+      const a = ring[idx], b = ring[(idx + 1) % N];
+      out[i] = a;
+      ring[idx] = 0.5 * (a + b) * decay;
+      idx = (idx + 1) % N;
+    }
+    let peak = 0;
+    for (let i = 0; i < Math.min(len, N * 8); i++) peak = Math.max(peak, Math.abs(out[i]));
+    const k = peak > 0 ? 0.6 / peak : 1;
+    for (let i = 0; i < len; i++) out[i] *= k;
+    this.cache.set(midi, buf);
+    return buf;
+  }
+
+  // returns a handle with stop(time)
+  note(midi, when, dur, gain, bus) {
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = this.pluck(midi);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, when);
+    g.gain.linearRampToValueAtTime(gain, when + 0.004);
+    src.connect(g).connect(bus);
+    src.start(when);
+    const end = when + Math.min(dur, 2.3);
+    g.gain.setTargetAtTime(0, end, 0.04);
+    src.stop(end + 0.3);
+    return {
+      stop(t) {
+        try { g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(0, t, 0.02); src.stop(t + 0.15); } catch (_) { /* already stopped */ }
+      },
+      end,
+    };
+  }
+
+  click(when, accent) {
+    const ctx = this.ctx;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.frequency.value = accent ? 1760 : 1175;
+    g.gain.setValueAtTime(0, when);
+    g.gain.linearRampToValueAtTime(accent ? 0.5 : 0.32, when + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.001, when + 0.06);
+    o.connect(g).connect(this.clickBus);
+    o.start(when);
+    o.stop(when + 0.08);
+  }
+}
+
+// Schedules events of the score against the audio clock.
+// options: rate (speed multiplier), chordMode ("off" | "change" | "pattern"), metronome (bool), loop {start, end} | null
+export class Player {
+  constructor(engine) {
+    this.engine = engine;
+    this.playing = false;
+    this.rate = 1;
+    this.opts = { chordMode: "pattern", metronome: false, melody: true, loop: null };
+    this.listeners = new Set();
+  }
+
+  setScore(score) {
+    this.score = score;
+    this.tm = new TimeMap(score);
+    this.bars = computeBars(score);
+    this.buildIndex();
+    if (this.playing) this.restart(this.position());
+  }
+
+  buildIndex() {
+    const s = this.score;
+    this.noteAt = new Map();
+    s.tracks.forEach((t) => {
+      if (t.muted || t.hidden) return;
+      for (const n of t.notes) {
+        if (!this.noteAt.has(n.col)) this.noteAt.set(n.col, []);
+        this.noteAt.get(n.col).push(n);
+      }
+    });
+  }
+
+  setOptions(o) {
+    Object.assign(this.opts, o);
+    if (this.playing) this.restart(this.position());
+  }
+
+  setRate(r) {
+    if (this.playing) {
+      const pos = this.position();
+      this.rate = r;
+      this.restart(pos);
+    } else this.rate = r;
+  }
+
+  position() {
+    if (!this.playing) return this.pausedCol ?? 0;
+    const ctx = this.engine.ctx;
+    const t = this.startScoreT + Math.max(0, ctx.currentTime - this.startCtx) * this.rate;
+    return this.tm.timeToCol(t);
+  }
+
+  scoreTime() {
+    return this.tm.colToTime(this.position());
+  }
+
+  play(fromCol) {
+    this.engine.ensure();
+    this.playing = true;
+    this.restart(fromCol ?? this.pausedCol ?? 0);
+    this.emit("play");
+  }
+
+  restart(col) {
+    const ctx = this.engine.ctx;
+    this.silence();
+    this.startCtx = ctx.currentTime + 0.06;
+    this.startScoreT = this.tm.colToTime(col);
+    this.nextCol = Math.ceil(col - 1e-6);
+    this.melodyVoices = [null, null, null, null];
+    this.chordVoices = [null, null, null, null];
+    clearInterval(this.timer);
+    this.timer = setInterval(() => this.tick(), 25);
+    this.tick();
+    this.emit("seek");
+  }
+
+  pause() {
+    if (!this.playing) return;
+    this.pausedCol = this.position();
+    this.playing = false;
+    clearInterval(this.timer);
+    this.silence();
+    this.emit("pause");
+  }
+
+  stop() {
+    this.pause();
+    this.pausedCol = this.opts.loop ? this.opts.loop.start : 0;
+    this.emit("seek");
+  }
+
+  seek(col) {
+    if (this.playing) this.restart(col);
+    else { this.pausedCol = col; this.emit("seek"); }
+  }
+
+  silence() {
+    const t = this.engine.ctx ? this.engine.ctx.currentTime : 0;
+    for (const v of [...(this.melodyVoices || []), ...(this.chordVoices || [])]) if (v) v.stop(t);
+    this.melodyVoices = [null, null, null, null];
+    this.chordVoices = [null, null, null, null];
+  }
+
+  colTime(col) {
+    // audio-clock time at which column col sounds
+    return this.startCtx + (this.tm.colToTime(col) - this.startScoreT) / this.rate;
+  }
+
+  tick() {
+    if (!this.playing) return;
+    const ctx = this.engine.ctx;
+    const horizon = ctx.currentTime + 0.18;
+    const s = this.score;
+    const spb = s.stepsPerBeat;
+    const tuning = (TUNINGS[s.tuning] || TUNINGS.standard).strings;
+    let guard = 0;
+    while (this.colTime(this.nextCol) < horizon && guard++ < 400) {
+      const col = this.nextCol;
+      const loop = this.opts.loop;
+      if (loop && col >= loop.end) {
+        // jump back: continue the audio clock from the loop start
+        const when = this.colTime(col);
+        this.startScoreT = this.tm.colToTime(loop.start);
+        this.startCtx = when;
+        this.nextCol = loop.start;
+        this.emit("loop");
+        continue;
+      }
+      if (col >= s.columnCount) {
+        const endAt = this.colTime(col);
+        setTimeout(() => { if (this.playing && this.position() >= s.columnCount - 0.01) this.stop(); }, Math.max(0, (endAt - ctx.currentTime) * 1000 + 50));
+        this.nextCol = Infinity;
+        break;
+      }
+      const when = this.colTime(col);
+      const bar = barAt(this.bars, col);
+      const inBar = col - bar.start;
+      // metronome
+      if (this.opts.metronome && inBar % spb === 0) this.engine.click(when, inBar === 0);
+      // melody
+      if (this.opts.melody) {
+        for (const n of this.noteAt.get(col) || []) {
+          const dur = (this.tm.colToTime(n.col + n.len) - this.tm.colToTime(n.col)) / this.rate;
+          const old = this.melodyVoices[n.string];
+          if (old && old.end > when) old.stop(when);
+          this.melodyVoices[n.string] = this.engine.note(tuning[n.string] + n.fret, when, dur + 0.05, 0.55, this.engine.melodyBus);
+        }
+      }
+      // chords
+      const mode = this.opts.chordMode;
+      if (mode !== "off" && s.chords.length) {
+        const ci = chordIndexAt(s, col);
+        if (ci >= 0) {
+          const ch = s.chords[ci];
+          let dir = null, vel = 0.2;
+          if (mode === "change") {
+            if (ch.col === col) dir = "D";
+          } else if (spb % 2 === 0 && inBar % (spb / 2) === 0) {
+            const pat = s.strum.pattern || "D-D-D-D-";
+            const slot = inBar / (spb / 2);
+            const c = pat[slot % pat.length];
+            if (c === "D" || c === "U") dir = c;
+            vel = inBar % spb === 0 ? 0.24 : 0.17;
+          }
+          if (dir && ch.name !== "N.C.") this.strum(ch.name, dir, when, vel, tuning);
+        }
+      }
+      this.nextCol = col + 1;
+    }
+  }
+
+  strum(name, dir, when, vel, tuning) {
+    const sh = chordShape(name, this.score.tuning, this.score.chordShapes);
+    if (!sh) return;
+    const order = dir === "D" ? [0, 1, 2, 3] : [3, 2, 1, 0];
+    const beat = 60 / this.tm.bpmAt(this.position()) / this.rate;
+    order.forEach((s, k) => {
+      if (sh.frets[s] < 0) return;
+      const t = when + k * 0.012;
+      const old = this.chordVoices[s];
+      if (old && old.end > t) old.stop(t);
+      this.chordVoices[s] = this.engine.note(tuning[s] + sh.frets[s], t, beat * 1.8, vel * (dir === "U" ? 0.8 : 1), this.engine.chordBus);
+    });
+  }
+
+  on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
+  emit(type) { for (const fn of this.listeners) fn(type); }
+}

@@ -1,0 +1,528 @@
+{
+ "format": {
+  "name": "ukulele-sheet",
+  "version": 1
+ },
+ "meta": {
+  "title": "Ode to Joy (환희의 송가)",
+  "artist": "L. v. Beethoven",
+  "key": "C",
+  "arranger": "",
+  "comment": "교향곡 9번 4악장 주제. 저작권이 끝난 곡으로 만든 예제",
+  "source": ""
+ },
+ "tuning": "standard",
+ "stepsPerBeat": 4,
+ "columnCount": 256,
+ "tempo": [
+  {
+   "col": 0,
+   "bpm": 108
+  }
+ ],
+ "meter": [
+  {
+   "col": 0,
+   "beats": 4
+  }
+ ],
+ "youtube": {
+  "videoId": "",
+  "offsetMs": 0
+ },
+ "strum": {
+  "pattern": "D-DUD-DU"
+ },
+ "sections": [
+  {
+   "col": 0,
+   "text": "A"
+  },
+  {
+   "col": 128,
+   "text": "B"
+  },
+  {
+   "col": 192,
+   "text": "A"
+  }
+ ],
+ "chords": [
+  {
+   "col": 0,
+   "name": "C"
+  },
+  {
+   "col": 16,
+   "name": "G7"
+  },
+  {
+   "col": 32,
+   "name": "C"
+  },
+  {
+   "col": 48,
+   "name": "C"
+  },
+  {
+   "col": 56,
+   "name": "G7"
+  },
+  {
+   "col": 64,
+   "name": "C"
+  },
+  {
+   "col": 80,
+   "name": "G7"
+  },
+  {
+   "col": 96,
+   "name": "C"
+  },
+  {
+   "col": 112,
+   "name": "G7"
+  },
+  {
+   "col": 120,
+   "name": "C"
+  },
+  {
+   "col": 128,
+   "name": "G7"
+  },
+  {
+   "col": 136,
+   "name": "C"
+  },
+  {
+   "col": 144,
+   "name": "G7"
+  },
+  {
+   "col": 152,
+   "name": "C"
+  },
+  {
+   "col": 160,
+   "name": "G7"
+  },
+  {
+   "col": 168,
+   "name": "C"
+  },
+  {
+   "col": 176,
+   "name": "Am"
+  },
+  {
+   "col": 184,
+   "name": "G7"
+  },
+  {
+   "col": 192,
+   "name": "C"
+  },
+  {
+   "col": 208,
+   "name": "G7"
+  },
+  {
+   "col": 224,
+   "name": "C"
+  },
+  {
+   "col": 240,
+   "name": "G7"
+  },
+  {
+   "col": 248,
+   "name": "C"
+  }
+ ],
+ "lyrics": [],
+ "tracks": [
+  {
+   "id": "melody",
+   "name": "멜로디",
+   "hidden": false,
+   "muted": false,
+   "notes": [
+    {
+     "col": 0,
+     "len": 4,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 4,
+     "len": 4,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 8,
+     "len": 4,
+     "string": 3,
+     "fret": 8
+    },
+    {
+     "col": 12,
+     "len": 4,
+     "string": 3,
+     "fret": 10
+    },
+    {
+     "col": 16,
+     "len": 4,
+     "string": 3,
+     "fret": 10
+    },
+    {
+     "col": 20,
+     "len": 4,
+     "string": 3,
+     "fret": 8
+    },
+    {
+     "col": 24,
+     "len": 4,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 28,
+     "len": 4,
+     "string": 3,
+     "fret": 5
+    },
+    {
+     "col": 32,
+     "len": 4,
+     "string": 3,
+     "fret": 3
+    },
+    {
+     "col": 36,
+     "len": 4,
+     "string": 3,
+     "fret": 3
+    },
+    {
+     "col": 40,
+     "len": 4,
+     "string": 3,
+     "fret": 5
+    },
+    {
+     "col": 44,
+     "len": 4,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 48,
+     "len": 6,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 54,
+     "len": 2,
+     "string": 3,
+     "fret": 5
+    },
+    {
+     "col": 56,
+     "len": 8,
+     "string": 3,
+     "fret": 5
+    },
+    {
+     "col": 64,
+     "len": 4,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 68,
+     "len": 4,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 72,
+     "len": 4,
+     "string": 3,
+     "fret": 8
+    },
+    {
+     "col": 76,
+     "len": 4,
+     "string": 3,
+     "fret": 10
+    },
+    {
+     "col": 80,
+     "len": 4,
+     "string": 3,
+     "fret": 10
+    },
+    {
+     "col": 84,
+     "len": 4,
+     "string": 3,
+     "fret": 8
+    },
+    {
+     "col": 88,
+     "len": 4,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 92,
+     "len": 4,
+     "string": 3,
+     "fret": 5
+    },
+    {
+     "col": 96,
+     "len": 4,
+     "string": 3,
+     "fret": 3
+    },
+    {
+     "col": 100,
+     "len": 4,
+     "string": 3,
+     "fret": 3
+    },
+    {
+     "col": 104,
+     "len": 4,
+     "string": 3,
+     "fret": 5
+    },
+    {
+     "col": 108,
+     "len": 4,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 112,
+     "len": 6,
+     "string": 3,
+     "fret": 5
+    },
+    {
+     "col": 118,
+     "len": 2,
+     "string": 3,
+     "fret": 3
+    },
+    {
+     "col": 120,
+     "len": 8,
+     "string": 3,
+     "fret": 3
+    },
+    {
+     "col": 128,
+     "len": 4,
+     "string": 3,
+     "fret": 5
+    },
+    {
+     "col": 132,
+     "len": 4,
+     "string": 3,
+     "fret": 5
+    },
+    {
+     "col": 136,
+     "len": 4,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 140,
+     "len": 4,
+     "string": 0,
+     "fret": 5
+    },
+    {
+     "col": 144,
+     "len": 4,
+     "string": 3,
+     "fret": 5
+    },
+    {
+     "col": 148,
+     "len": 2,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 150,
+     "len": 2,
+     "string": 3,
+     "fret": 8
+    },
+    {
+     "col": 152,
+     "len": 4,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 156,
+     "len": 4,
+     "string": 0,
+     "fret": 5
+    },
+    {
+     "col": 160,
+     "len": 4,
+     "string": 3,
+     "fret": 5
+    },
+    {
+     "col": 164,
+     "len": 2,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 166,
+     "len": 2,
+     "string": 3,
+     "fret": 8
+    },
+    {
+     "col": 168,
+     "len": 4,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 172,
+     "len": 4,
+     "string": 3,
+     "fret": 5
+    },
+    {
+     "col": 176,
+     "len": 4,
+     "string": 3,
+     "fret": 3
+    },
+    {
+     "col": 180,
+     "len": 4,
+     "string": 3,
+     "fret": 5
+    },
+    {
+     "col": 184,
+     "len": 8,
+     "string": 0,
+     "fret": 0
+    },
+    {
+     "col": 192,
+     "len": 4,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 196,
+     "len": 4,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 200,
+     "len": 4,
+     "string": 3,
+     "fret": 8
+    },
+    {
+     "col": 204,
+     "len": 4,
+     "string": 3,
+     "fret": 10
+    },
+    {
+     "col": 208,
+     "len": 4,
+     "string": 3,
+     "fret": 10
+    },
+    {
+     "col": 212,
+     "len": 4,
+     "string": 3,
+     "fret": 8
+    },
+    {
+     "col": 216,
+     "len": 4,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 220,
+     "len": 4,
+     "string": 3,
+     "fret": 5
+    },
+    {
+     "col": 224,
+     "len": 4,
+     "string": 3,
+     "fret": 3
+    },
+    {
+     "col": 228,
+     "len": 4,
+     "string": 3,
+     "fret": 3
+    },
+    {
+     "col": 232,
+     "len": 4,
+     "string": 3,
+     "fret": 5
+    },
+    {
+     "col": 236,
+     "len": 4,
+     "string": 3,
+     "fret": 7
+    },
+    {
+     "col": 240,
+     "len": 6,
+     "string": 3,
+     "fret": 5
+    },
+    {
+     "col": 246,
+     "len": 2,
+     "string": 3,
+     "fret": 3
+    },
+    {
+     "col": 248,
+     "len": 8,
+     "string": 3,
+     "fret": 3
+    }
+   ]
+  }
+ ],
+ "chordShapes": {}
+}

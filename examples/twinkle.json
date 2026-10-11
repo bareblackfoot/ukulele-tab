@@ -1,0 +1,573 @@
+{
+ "format": {
+  "name": "ukulele-sheet",
+  "version": 1
+ },
+ "meta": {
+  "title": "Twinkle, Twinkle, Little Star",
+  "artist": "프랑스 민요 (영어 가사 Jane Taylor, 1806)",
+  "key": "C",
+  "arranger": "",
+  "comment": "저작권이 끝난 곡으로 만든 예제",
+  "source": ""
+ },
+ "tuning": "standard",
+ "stepsPerBeat": 4,
+ "columnCount": 192,
+ "tempo": [
+  {
+   "col": 0,
+   "bpm": 96
+  }
+ ],
+ "meter": [
+  {
+   "col": 0,
+   "beats": 4
+  }
+ ],
+ "youtube": {
+  "videoId": "",
+  "offsetMs": 0
+ },
+ "strum": {
+  "pattern": "D-D-DUDU"
+ },
+ "sections": [
+  {
+   "col": 0,
+   "text": "A"
+  },
+  {
+   "col": 64,
+   "text": "B"
+  },
+  {
+   "col": 128,
+   "text": "A"
+  }
+ ],
+ "chords": [
+  {
+   "col": 0,
+   "name": "C"
+  },
+  {
+   "col": 16,
+   "name": "F"
+  },
+  {
+   "col": 24,
+   "name": "C"
+  },
+  {
+   "col": 32,
+   "name": "F"
+  },
+  {
+   "col": 40,
+   "name": "C"
+  },
+  {
+   "col": 48,
+   "name": "G7"
+  },
+  {
+   "col": 56,
+   "name": "C"
+  },
+  {
+   "col": 64,
+   "name": "C"
+  },
+  {
+   "col": 72,
+   "name": "G7"
+  },
+  {
+   "col": 80,
+   "name": "C"
+  },
+  {
+   "col": 88,
+   "name": "G7"
+  },
+  {
+   "col": 96,
+   "name": "C"
+  },
+  {
+   "col": 104,
+   "name": "G7"
+  },
+  {
+   "col": 112,
+   "name": "C"
+  },
+  {
+   "col": 120,
+   "name": "G7"
+  },
+  {
+   "col": 128,
+   "name": "C"
+  },
+  {
+   "col": 144,
+   "name": "F"
+  },
+  {
+   "col": 152,
+   "name": "C"
+  },
+  {
+   "col": 160,
+   "name": "F"
+  },
+  {
+   "col": 168,
+   "name": "C"
+  },
+  {
+   "col": 176,
+   "name": "G7"
+  },
+  {
+   "col": 184,
+   "name": "C"
+  }
+ ],
+ "lyrics": [
+  {
+   "col": 0,
+   "text": "Twin"
+  },
+  {
+   "col": 4,
+   "text": "kle"
+  },
+  {
+   "col": 8,
+   "text": "twin"
+  },
+  {
+   "col": 12,
+   "text": "kle"
+  },
+  {
+   "col": 16,
+   "text": "lit"
+  },
+  {
+   "col": 20,
+   "text": "tle"
+  },
+  {
+   "col": 24,
+   "text": "star"
+  },
+  {
+   "col": 32,
+   "text": "How"
+  },
+  {
+   "col": 36,
+   "text": "I"
+  },
+  {
+   "col": 40,
+   "text": "won"
+  },
+  {
+   "col": 44,
+   "text": "der"
+  },
+  {
+   "col": 48,
+   "text": "what"
+  },
+  {
+   "col": 52,
+   "text": "you"
+  },
+  {
+   "col": 56,
+   "text": "are"
+  },
+  {
+   "col": 64,
+   "text": "Up"
+  },
+  {
+   "col": 68,
+   "text": "a"
+  },
+  {
+   "col": 72,
+   "text": "bove"
+  },
+  {
+   "col": 76,
+   "text": "the"
+  },
+  {
+   "col": 80,
+   "text": "world"
+  },
+  {
+   "col": 84,
+   "text": "so"
+  },
+  {
+   "col": 88,
+   "text": "high"
+  },
+  {
+   "col": 96,
+   "text": "Like"
+  },
+  {
+   "col": 100,
+   "text": "a"
+  },
+  {
+   "col": 104,
+   "text": "dia"
+  },
+  {
+   "col": 108,
+   "text": "mond"
+  },
+  {
+   "col": 112,
+   "text": "in"
+  },
+  {
+   "col": 116,
+   "text": "the"
+  },
+  {
+   "col": 120,
+   "text": "sky"
+  },
+  {
+   "col": 128,
+   "text": "Twin"
+  },
+  {
+   "col": 132,
+   "text": "kle"
+  },
+  {
+   "col": 136,
+   "text": "twin"
+  },
+  {
+   "col": 140,
+   "text": "kle"
+  },
+  {
+   "col": 144,
+   "text": "lit"
+  },
+  {
+   "col": 148,
+   "text": "tle"
+  },
+  {
+   "col": 152,
+   "text": "star"
+  },
+  {
+   "col": 160,
+   "text": "How"
+  },
+  {
+   "col": 164,
+   "text": "I"
+  },
+  {
+   "col": 168,
+   "text": "won"
+  },
+  {
+   "col": 172,
+   "text": "der"
+  },
+  {
+   "col": 176,
+   "text": "what"
+  },
+  {
+   "col": 180,
+   "text": "you"
+  },
+  {
+   "col": 184,
+   "text": "are"
+  }
+ ],
+ "tracks": [
+  {
+   "id": "melody",
+   "name": "멜로디",
+   "hidden": false,
+   "muted": false,
+   "notes": [
+    {
+     "col": 0,
+     "len": 4,
+     "string": 1,
+     "fret": 0
+    },
+    {
+     "col": 4,
+     "len": 4,
+     "string": 1,
+     "fret": 0
+    },
+    {
+     "col": 8,
+     "len": 4,
+     "string": 0,
+     "fret": 0
+    },
+    {
+     "col": 12,
+     "len": 4,
+     "string": 0,
+     "fret": 0
+    },
+    {
+     "col": 16,
+     "len": 4,
+     "string": 3,
+     "fret": 0
+    },
+    {
+     "col": 20,
+     "len": 4,
+     "string": 3,
+     "fret": 0
+    },
+    {
+     "col": 24,
+     "len": 8,
+     "string": 0,
+     "fret": 0
+    },
+    {
+     "col": 32,
+     "len": 4,
+     "string": 2,
+     "fret": 1
+    },
+    {
+     "col": 36,
+     "len": 4,
+     "string": 2,
+     "fret": 1
+    },
+    {
+     "col": 40,
+     "len": 4,
+     "string": 2,
+     "fret": 0
+    },
+    {
+     "col": 44,
+     "len": 4,
+     "string": 2,
+     "fret": 0
+    },
+    {
+     "col": 48,
+     "len": 4,
+     "string": 1,
+     "fret": 2
+    },
+    {
+     "col": 52,
+     "len": 4,
+     "string": 1,
+     "fret": 2
+    },
+    {
+     "col": 56,
+     "len": 8,
+     "string": 1,
+     "fret": 0
+    },
+    {
+     "col": 64,
+     "len": 4,
+     "string": 0,
+     "fret": 0
+    },
+    {
+     "col": 68,
+     "len": 4,
+     "string": 0,
+     "fret": 0
+    },
+    {
+     "col": 72,
+     "len": 4,
+     "string": 2,
+     "fret": 1
+    },
+    {
+     "col": 76,
+     "len": 4,
+     "string": 2,
+     "fret": 1
+    },
+    {
+     "col": 80,
+     "len": 4,
+     "string": 2,
+     "fret": 0
+    },
+    {
+     "col": 84,
+     "len": 4,
+     "string": 2,
+     "fret": 0
+    },
+    {
+     "col": 88,
+     "len": 8,
+     "string": 1,
+     "fret": 2
+    },
+    {
+     "col": 96,
+     "len": 4,
+     "string": 0,
+     "fret": 0
+    },
+    {
+     "col": 100,
+     "len": 4,
+     "string": 0,
+     "fret": 0
+    },
+    {
+     "col": 104,
+     "len": 4,
+     "string": 2,
+     "fret": 1
+    },
+    {
+     "col": 108,
+     "len": 4,
+     "string": 2,
+     "fret": 1
+    },
+    {
+     "col": 112,
+     "len": 4,
+     "string": 2,
+     "fret": 0
+    },
+    {
+     "col": 116,
+     "len": 4,
+     "string": 2,
+     "fret": 0
+    },
+    {
+     "col": 120,
+     "len": 8,
+     "string": 1,
+     "fret": 2
+    },
+    {
+     "col": 128,
+     "len": 4,
+     "string": 1,
+     "fret": 0
+    },
+    {
+     "col": 132,
+     "len": 4,
+     "string": 1,
+     "fret": 0
+    },
+    {
+     "col": 136,
+     "len": 4,
+     "string": 0,
+     "fret": 0
+    },
+    {
+     "col": 140,
+     "len": 4,
+     "string": 0,
+     "fret": 0
+    },
+    {
+     "col": 144,
+     "len": 4,
+     "string": 3,
+     "fret": 0
+    },
+    {
+     "col": 148,
+     "len": 4,
+     "string": 3,
+     "fret": 0
+    },
+    {
+     "col": 152,
+     "len": 8,
+     "string": 0,
+     "fret": 0
+    },
+    {
+     "col": 160,
+     "len": 4,
+     "string": 2,
+     "fret": 1
+    },
+    {
+     "col": 164,
+     "len": 4,
+     "string": 2,
+     "fret": 1
+    },
+    {
+     "col": 168,
+     "len": 4,
+     "string": 2,
+     "fret": 0
+    },
+    {
+     "col": 172,
+     "len": 4,
+     "string": 2,
+     "fret": 0
+    },
+    {
+     "col": 176,
+     "len": 4,
+     "string": 1,
+     "fret": 2
+    },
+    {
+     "col": 180,
+     "len": 4,
+     "string": 1,
+     "fret": 2
+    },
+    {
+     "col": 184,
+     "len": 8,
+     "string": 1,
+     "fret": 0
+    }
+   ]
+  }
+ ],
+ "chordShapes": {}
+}

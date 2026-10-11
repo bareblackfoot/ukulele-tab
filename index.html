@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>우쿨렐레 코드 악보</title>
+<meta name="description" content="유튜브에 맞춰 재생하는 우쿨렐레 코드·TAB 악보. 위쪽에 다음 코드 운지가 뜸.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3v13' stroke='%23a8743f' stroke-width='3'/%3E%3Ccircle cx='16' cy='22' r='8' fill='%23a8743f'/%3E%3Ccircle cx='16' cy='22' r='2.5' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><span class="logo" aria-hidden="true"></span><b>우쿨렐레 코드 악보</b></div>
+    <nav class="menus">
+      <div class="menu">
+        <button type="button" class="menu-btn">파일</button>
+        <div class="menu-panel">
+          <button type="button" data-act="new">새 악보</button>
+          <button type="button" data-act="open">JSON 열기 (우쿨렐레·SPRED)</button>
+          <button type="button" data-act="save">JSON 저장</button>
+          <button type="button" data-act="examples">예제</button>
+          <button type="button" data-act="print">인쇄 / PDF</button>
+          <hr>
+          <button type="button" data-act="details">곡 정보·튜닝</button>
+        </div>
+      </div>
+      <div class="menu">
+        <button type="button" class="menu-btn">보기</button>
+        <div class="menu-panel">
+          <label><input type="checkbox" data-set="miniDiagrams"> 악보 안 작은 운지 그림</label>
+          <label><input type="checkbox" data-set="showTab"> 멜로디 TAB</label>
+          <label><input type="checkbox" data-set="follow"> 재생 위치 따라 넘기기</label>
+          <label>운지 그림 방향
+            <select data-set="orient"><option value="h">가로 (A현이 위)</option><option value="v">세로</option></select></label>
+          <label>다음 코드 개수
+            <select data-set="upcoming"><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
+          <label>한 줄 마디 수
+            <select data-set="barsPerLine"><option value="0">자동</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
+        </div>
+      </div>
+      <button type="button" class="toggle" data-act="edit" aria-pressed="false">편집</button>
+      <button type="button" data-act="help">도움말</button>
+    </nav>
+    <button type="button" class="primary" data-act="transcribe">유튜브로 악보 따기</button>
+  </header>
+
+  <section class="transport" aria-label="재생">
+    <button type="button" class="play" data-act="play" aria-label="재생">▶</button>
+    <button type="button" data-act="stop" aria-label="처음으로">■</button>
+    <input type="range" class="seek" min="0" max="1000" value="0" aria-label="재생 위치">
+    <span class="time">0:00 / 0:00</span>
+    <label class="ctl">속도
+      <select data-opt="rate">
+        <option value="0.5">50%</option><option value="0.6">60%</option><option value="0.7">70%</option><option value="0.75">75%</option>
+        <option value="0.8">80%</option><option value="0.9">90%</option><option value="1" selected>100%</option>
+        <option value="1.1">110%</option><option value="1.25">125%</option><option value="1.5">150%</option>
+      </select></label>
+    <label class="ctl">코드 소리
+      <select data-opt="chordMode"><option value="pattern">스트럼 패턴</option><option value="change">바뀔 때 한 번</option><option value="off">끔</option></select></label>
+    <label class="ctl"><input type="checkbox" data-opt="melody" checked> 멜로디 소리</label>
+    <label class="ctl"><input type="checkbox" data-opt="metronome"> 메트로놈</label>
+    <label class="ctl">음량 <input type="range" data-opt="volume" min="0" max="100" value="70"></label>
+    <button type="button" class="toggle" data-act="yt" aria-pressed="false">YouTube</button>
+    <button type="button" class="toggle" data-act="loop" aria-pressed="false" title="지금 보이는 마디 구간 반복: 처음 누르면 시작 마디, 두 번째 누르면 끝 마디">구간 반복</button>
+  </section>
+
+  <section class="chordbar" aria-label="지금 코드와 다음 코드"></section>
+
+  <main class="views">
+    <div class="sheet" tabindex="0" aria-label="코드 악보"></div>
+    <div class="editor" hidden></div>
+  </main>
+
+  <aside class="yt" hidden>
+    <div class="yt-head">
+      <input type="text" class="yt-url" placeholder="YouTube 주소 또는 영상 ID">
+      <label>싱크 <input type="number" class="yt-offset" step="10" value="0"> ms</label>
+      <label>영상 음량 <input type="range" class="yt-vol" min="0" max="100" value="80"></label>
+      <button type="button" class="yt-close" aria-label="닫기">×</button>
+    </div>
+    <div class="yt-player"></div>
+    <p class="yt-note">싱크 값: 영상 시각 = 악보 시각 − 값/1000. 영상이 늦게 나오면 값을 줄임.</p>
+  </aside>
+
+  <footer class="status" role="status"></footer>
+</div>
+
+<input type="file" class="file-input" accept=".json,application/json" hidden>
+
+<dialog class="dlg-transcribe">
+  <form method="dialog">
+    <h2>유튜브로 악보 따기</h2>
+    <p class="hint">이 PC에서 켜 둔 브리지가 Claude에게 일을 넘김. Claude가 nurilab 서버 GPU로 코드·박자·가사·멜로디를 따고 결과를 검토해서 돌려줌. 한 곡에 몇 분 걸림.</p>
+    <label class="row">YouTube 주소 <input type="text" name="url" placeholder="https://www.youtube.com/watch?v=..." required></label>
+    <div class="row opts">
+      <label>튜닝 <select name="tuning"><option value="standard">High-G (표준)</option><option value="low-g">Low-G</option></select></label>
+      <label>가사 언어 <select name="lang"><option value="">자동</option><option value="ko">한국어</option><option value="ja">일본어</option><option value="en">영어</option></select></label>
+      <label><input type="checkbox" name="lyrics" checked> 가사</label>
+      <label><input type="checkbox" name="inst" checked> 반주 멜로디</label>
+    </div>
+    <div class="row"><button type="button" class="primary" data-act="tx-start">따기 시작</button>
+      <button type="button" data-act="tx-settings">연결 설정</button>
+      <span class="tx-conn"></span></div>
+    <div class="tx-progress" aria-live="polite"></div>
+    <h3>지난 작업</h3>
+    <div class="tx-jobs"></div>
+    <div class="row end"><button value="close">닫기</button></div>
+  </form>
+</dialog>
+
+<dialog class="dlg-bridge">
+  <form method="dialog">
+    <h2>내 PC 연결 설정</h2>
+    <p class="hint">브리지 주소와 토큰. 토큰은 PC에서 <code>python D:\codes\ukulele-tab\bridge\bridge.py --token</code>으로 볼 수 있음.</p>
+    <label class="row">주소 <input type="text" name="url" value="http://127.0.0.1:8765"></label>
+    <label class="row">토큰 <input type="text" name="token" autocomplete="off"></label>
+    <div class="row"><button type="button" data-act="br-test">연결 확인</button><span class="br-msg"></span></div>
+    <div class="row end"><button value="cancel">취소</button><button value="ok" class="primary">저장</button></div>
+  </form>
+</dialog>
+
+<dialog class="dlg-details">
+  <form method="dialog">
+    <h2>곡 정보</h2>
+    <label class="row">제목 <input type="text" name="title"></label>
+    <label class="row">가수 <input type="text" name="artist"></label>
+    <label class="row">조 <input type="text" name="key" placeholder="C, Am ..."></label>
+    <label class="row">스트럼 패턴 <input type="text" name="pattern" placeholder="D-DU-UDU" title="8분음표 한 칸에 한 글자: D 다운, U 업, - 쉼"></label>
+    <label class="row">튜닝 <select name="tuning"><option value="standard">High-G (G4 C4 E4 A4)</option><option value="low-g">Low-G (G3 C4 E4 A4)</option></select></label>
+    <label class="row">YouTube <input type="text" name="video" placeholder="주소 또는 영상 ID"></label>
+    <label class="row">싱크 (ms) <input type="number" name="offset" step="10"></label>
+    <label class="row">조옮김 (반음) <input type="number" name="transpose" value="0" min="-11" max="11" title="코드와 멜로디를 같이 옮김. 원곡 영상과는 음이 달라짐"></label>
+    <p class="hint transpose-hint"></p>
+    <div class="row end"><button value="cancel">취소</button><button value="ok" class="primary">적용</button></div>
+  </form>
+</dialog>
+
+<dialog class="dlg-examples">
+  <form method="dialog">
+    <h2>예제</h2>
+    <div class="ex-list"></div>
+    <div class="row end"><button value="close">닫기</button></div>
+  </form>
+</dialog>
+
+<dialog class="dlg-import">
+  <form method="dialog">
+    <h2>멜로디를 우쿨렐레로 옮기기</h2>
+    <p class="hint">음높이로 된 멜로디(SPRED 악보, 자동 채보 결과)를 줄·프렛으로 바꿈.</p>
+    <label class="row">튜닝 <select name="tuning"><option value="standard">High-G (표준)</option><option value="low-g">Low-G</option></select></label>
+    <label class="row">옥타브 <select name="octave"><option value="auto">자동 (가장 많이 들어가게)</option><option value="-12">한 옥타브 내림</option><option value="0">그대로</option><option value="12">한 옥타브 올림</option><option value="24">두 옥타브 올림</option></select></label>
+    <div class="row end"><button value="cancel">취소</button><button value="ok" class="primary">열기</button></div>
+  </form>
+</dialog>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

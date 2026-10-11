@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>사용법 · 우쿨렐레 코드 악보</title>
+<style>
+  :root { --paper: #fffdf8; --ink: #1d1b18; --ink2: #5d564c; --accent: #a8743f; --grid: #d9d0c1; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --paper: #1c1b19; --ink: #f1ece2; --ink2: #b6ad9f; --accent: #c9935a; --grid: #4a443b; } }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.65 "Pretendard", "Malgun Gothic", system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1 { font-size: 24px; } h2 { font-size: 18px; margin-top: 32px; border-bottom: 2px solid var(--accent); padding-bottom: 4px; }
+  code, kbd { font-family: ui-monospace, Consolas, monospace; font-size: 13px; background: color-mix(in srgb, var(--grid) 45%, transparent); padding: 1px 5px; border-radius: 4px; }
+  table { border-collapse: collapse; width: 100%; } td, th { border-bottom: 1px solid var(--grid); padding: 6px 8px; text-align: left; vertical-align: top; }
+  .muted { color: var(--ink2); } a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+<h1>우쿨렐레 코드 악보 사용법</h1>
+<p class="muted">유튜브 영상에 맞춰 코드 악보를 재생하고, 위쪽 칸에 지금 코드와 다음 코드의 운지 그림을 보여 주는 도구입니다. <a href="./">악보로 돌아가기</a></p>
+
+<h2>화면</h2>
+<table>
+<tr><th>위쪽 코드 칸</th><td>왼쪽 빨간 테두리가 지금 칠 코드입니다. 오른쪽은 다음에 나올 코드이고, 위에 몇 박 뒤에 바뀌는지 적혀 있습니다. 동그라미 안 숫자는 손가락 번호입니다(1 검지, 2 중지, 3 약지, 4 새끼).</td></tr>
+<tr><th>운지 그림</th><td>기본은 가로 그림입니다. 왼쪽 굵은 선이 너트, 맨 위 줄이 A현, 맨 아래 줄이 G현입니다. 보기 메뉴에서 세로 그림으로 바꿀 수 있습니다.</td></tr>
+<tr><th>악보</th><td>한 줄에 4마디(화면이 좁으면 2~3마디)입니다. 코드 이름 옆 작은 그림은 운지, 선 아래는 가사입니다. 마디를 누르면 그 위치로 갑니다.</td></tr>
+<tr><th>멜로디 TAB</th><td>보기 → 멜로디 TAB을 켜면 가사 아래에 줄 4개(위에서부터 A, E, C, G)와 프렛 번호가 나옵니다.</td></tr>
+</table>
+
+<h2>재생과 연습</h2>
+<ul>
+<li><kbd>Space</kbd> 재생·일시 정지. 마디를 누르면 그 마디부터 재생합니다.</li>
+<li><b>속도</b>: 50%~150%. YouTube를 켜 둔 상태면 영상도 같은 속도로 바뀝니다(영상이 지원하는 속도로 맞춥니다).</li>
+<li><b>코드 소리</b>: 스트럼 패턴대로 치기, 코드가 바뀔 때 한 번만 치기, 끄기. 스트럼 패턴은 파일 → 곡 정보에서 8분음표 단위로 적습니다(<code>D</code> 다운, <code>U</code> 업, <code>-</code> 쉼, 예: <code>D-DU-UDU</code>).</li>
+<li><b>구간 반복</b>: 시작 마디에서 한 번, 끝 마디에서 한 번 누르면 그 구간을 반복합니다. 한 번 더 누르면 끕니다.</li>
+<li><b>YouTube</b>: 영상을 악보 재생에 맞춰 같이 틉니다. 싱크 값은 «영상 시각 = 악보 시각 − 값/1000» 규칙이고 SPRED와 같습니다.</li>
+</ul>
+
+<h2>편집</h2>
+<p>편집을 누르면 칸 단위 편집 화면이 나옵니다. 한 칸은 16분음표 하나입니다.</p>
+<table>
+<tr><th>줄 칸(A·E·C·G)</th><td>숫자를 치면 그 줄의 프렛 음이 들어갑니다. 두 자리는 이어서 칩니다(1 → 2 = 12). <kbd>[</kbd> <kbd>]</kbd>로 길이를 줄이고 늘립니다.</td></tr>
+<tr><th>코드·가사·구간·BPM·박자</th><td><kbd>Enter</kbd>나 두 번 누르기로 입력합니다. 가사는 <kbd>Enter</kbd>를 치면 다음 음 위치로 넘어갑니다.</td></tr>
+<tr><th>공통</th><td><kbd>Delete</kbd> 지우기, 방향키 이동(<kbd>Shift</kbd>와 같이 누르면 한 박씩), <kbd>Ctrl</kbd>+<kbd>Z</kbd> 실행 취소, <kbd>Ctrl</kbd>+<kbd>Y</kbd> 다시 실행.</td></tr>
+</table>
+<p>편집한 악보는 이 브라우저에 자동으로 남지만, 오래 두려면 파일 → JSON 저장을 쓰세요.</p>
+
+<h2>파일</h2>
+<ul>
+<li><b>JSON 열기</b>: 이 도구의 악보와 SPRED(오타마톤 악보) JSON을 엽니다. SPRED 악보는 멜로디를 우쿨렐레 줄·프렛으로 바꿔서 엽니다.</li>
+<li><b>곡 정보</b>: 제목, 조, 스트럼 패턴, 튜닝(High-G·Low-G), YouTube, 조옮김. 조옮김은 코드와 멜로디를 같이 옮기므로 원곡 영상과는 음이 달라집니다.</li>
+<li><b>인쇄 / PDF</b>: 악보 부분만 인쇄합니다. 인쇄 창에서 PDF로 저장할 수 있습니다.</li>
+</ul>
+
+<h2>유튜브로 악보 따기</h2>
+<p>이 기능은 이 도구를 만든 사람의 PC에서만 동작합니다. PC에서 켜 둔 연결 프로그램(브리지)이 Claude Code에게 일을 넘기고, Claude가 GPU 서버에서 코드·박자·가사·멜로디를 딴 뒤 결과를 검토해서 돌려줍니다. 브리지 설치와 실행 방법은 저장소의 <code>bridge/README.md</code>에 있습니다.</p>
+<p class="muted">자동으로 딴 악보는 틀린 코드나 가사가 섞일 수 있습니다. 편집 화면에서 고쳐 쓰세요.</p>
+</main>
+</body>
+</html>
