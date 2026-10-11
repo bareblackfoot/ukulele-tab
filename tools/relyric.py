@@ -62,6 +62,7 @@ def main():
     ap.add_argument("check")
     ap.add_argument("--asr")
     ap.add_argument("--keep-melody", action="store_true")
+    ap.add_argument("--asr-scale", type=float, default=1.0, help="multiply the recogniser's columns (0.5 when the tempo was halved)")
     ap.add_argument("--asr-shift", type=int, default=0, help="add this to the recogniser's columns (sheet cut at the front)")
     ap.add_argument("--dry", action="store_true")
     ap.add_argument("--pin", action="append", default=[],
@@ -80,7 +81,7 @@ def main():
     anchors = []
     if a.asr:
         for line in json.loads(Path(a.asr).read_text(encoding="utf-8"))["lines"]:
-            anchors += [{"col": x["col"] + a.asr_shift, "text": x["text"]} for x in line.get("syllables", [])]
+            anchors += [{"col": x["col"] * a.asr_scale + a.asr_shift, "text": x["text"]} for x in line.get("syllables", [])]
 
     if a.keep_melody:
         mel = s["tracks"][0]["notes"]

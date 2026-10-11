@@ -36,7 +36,7 @@ def tones(name):
     return {(r + x) % 12 for x in IV.get(q, IV[""])}
 
 
-def snap(name, vocab, shift=0):
+def snap(name, vocab, shift=0, force=False):
     """auto chord (in the recording's key) -> closest chord of the sheet's chord set"""
     if name == "N.C.":
         return name
@@ -49,7 +49,7 @@ def snap(name, vocab, shift=0):
         best = max(same_root, key=lambda v: len(tones(v) & t) - 0.1 * len(tones(v) ^ t))
         return best
     best = max(vocab, key=lambda v: len(tones(v) & t) - 0.1 * len(tones(v) ^ t))
-    return best if len(tones(best) & t) >= 2 else moved
+    return best if force or len(tones(best) & t) >= 2 else moved
 
 
 def bars_of(t):
@@ -103,13 +103,48 @@ def trim(t, bar):
     return t
 
 
+def halve_tempo(t):
+    """the beat tracker counted twice as fast as the song is felt: two of its beats become one, two of its bars one
+    bar (paired so that chord changes fall on the new bar lines)"""
+    spb = t.get("stepsPerBeat", 4)
+    starts = [c for c, _ in bars_of(t)]
+    changes = {c["col"] for c in t["chords"]}
+    phase = max((0, 1), key=lambda ph: sum(1 for k, c in enumerate(starts) if k % 2 == ph and c in changes))
+    new_starts = ([0] if phase else []) + [starts[k] for k in range(phase, len(starts), 2)]
+    meter, prev = [], None
+    for k, a in enumerate(new_starts):
+        b = new_starts[k + 1] if k + 1 < len(new_starts) else t["columnCount"]
+        beats = max(1, round((b - a) / spb / 2))
+        if beats != prev:
+            meter.append({"col": a // 2, "beats": beats})
+            prev = beats
+    half = lambda c: int(round(c / 2))
+    t["meter"] = meter
+    t["tempo"] = [{"col": half(e["col"]), "bpm": e["bpm"] / 2} for e in t["tempo"]]
+    for k in ("chords", "lyrics", "sections"):
+        seen, out = set(), []
+        for e in t.get(k, []):
+            c = half(e["col"])
+            if (k, c) in seen and k != "lyrics":
+                continue
+            seen.add((k, c))
+            out.append({**e, "col": c})
+        t[k] = out
+    for tr in t.get("melody", []):
+        tr["notes"] = [{**n, "col": half(n["col"]), "len": max(1, half(n["len"]))} for n in tr["notes"]]
+    t["columnCount"] = (t["columnCount"] + 1) // 2
+    return t
+
+
 def build(job, out_name, meta, strum, capo=0, explicit=None, vocab=None, sections=None, simplify=False, am7_after_a=False,
-          lyrics_fn=None, strums=None, trim_bar=None):
+          lyrics_fn=None, strums=None, trim_bar=None, halve=False, force_vocab=False):
     if ONLY and job not in ONLY:
         return
     t = json.loads((JOBS / job / "result.json").read_text(encoding="utf-8"))
     if trim_bar:
         t = trim(t, trim_bar)
+    if halve:
+        t = halve_tempo(t)
     bars = bars_of(t)
     spb = t.get("stepsPerBeat", 4)
     if explicit:
@@ -123,7 +158,7 @@ def build(job, out_name, meta, strum, capo=0, explicit=None, vocab=None, section
         for c in t["chords"]:
             name = c["name"]
             if vocab:
-                name = snap(name, vocab, -capo)
+                name = snap(name, vocab, -capo, force_vocab)
             elif simplify and name != "N.C.":
                 r, q = parse(name)
                 name = SHARP[(r - capo) % 12] + ("m" if q.startswith("m") and not q.startswith("maj") else "") + ("7" if q in ("7",) else "")
@@ -320,3 +355,38 @@ build("fav-hitorigotsu", "ひとりごつ (하치와레의 혼잣말) - ハチ�
                  "(m.blog.naver.com/uke_boy/223497437366)를 따름. 가사는 그 뜻을 바탕으로 음에 맞춰 한국어로 개사함. 칼립소나 셔플 주법"},
       "D-DU-UDU", explicit=lay(2, HG), lyrics_fn=hitorigotsu_lyrics)
 # strum patterns per bar come afterwards from the recording: tools/strum_apply.mjs <sheet> bridge/jobs/check-<id>/sync.json
+
+# ---------------------------------------------------------------- 새 곡 (10-11): 하와이에서 많이 치는 곡, 스펀지밥
+# Chords: detected in the recording, renamed to the nearest chord of a small set in the shapes played (with capo).
+# Lyrics and strum patterns come afterwards (tools/sync_check.py, tools/relyric.py, tools/strum_apply.mjs).
+C_SET = ["C", "Em", "Am", "F", "G", "G7", "E7", "Dm", "A7", "D7", "C7", "Fm"]
+G_SET = ["G", "C", "D", "D7", "Em", "Am", "E7", "A7", "G7", "B7"]
+build("new-rainbow", "Somewhere Over the Rainbow · What a Wonderful World - Israel Kamakawiwoʻole",
+      {"title": "Somewhere Over the Rainbow / What a Wonderful World", "artist": "Israel Kamakawiwoʻole", "key": "C",
+       "source": "IZ 공식 영상(V1bFr2SWP1I)에서 박자·멜로디·코드를 땀. 박을 두 배로 잡아서 절반 빠르기로 접음"},
+      "D-DU-UDU", vocab=C_SET, halve=True)
+build("new-alohaoe", "Aloha ʻOe - Queen Liliʻuokalani",
+      {"title": "Aloha ʻOe", "artist": "Queen Liliʻuokalani (1878) · 노래 Keiko", "key": "C",
+       "source": "Keiko's Ukulele Lesson 영상(-8Sy3p1zYOY)에서 박자·멜로디·코드를 땀. 가사는 저작권 만료된 원곡 하와이어"},
+      "D-DU-UDU", vocab=["C", "F", "G7", "G", "Dm", "C7", "Am", "D7", "Bb", "F7", "E7"])
+build("new-tinybubbles", "Tiny Bubbles - Don Ho",
+      {"title": "Tiny Bubbles", "artist": "Don Ho", "key": "E (카포 4, C 운지)",
+       "source": "Don Ho 음원(ApI4lO1116s)에서 박자·멜로디·코드를 땀"},
+      "D-DU-UDU", capo=4, vocab=["C", "C7", "F", "G7", "D7", "Am"], force_vocab=True)
+build("new-spongebob", "SpongeBob SquarePants Theme - SpongeBob SquarePants",
+      {"title": "SpongeBob SquarePants Theme", "artist": "SpongeBob SquarePants", "key": "G",
+       "source": "주제가 음원(ehu9-GDSrck)에서 박자·멜로디·코드를 땀. 박을 두 배로 잡아서 절반 빠르기로 접음"},
+      "D-DU-UDU", vocab=G_SET, halve=True)
+build("new-campfire", "The Campfire Song Song - SpongeBob SquarePants",
+      {"title": "The Campfire Song Song", "artist": "SpongeBob SquarePants", "key": "Bb (카포 3, G 운지)",
+       "source": "음원(Jw5QXSeB6RI)에서 박자·멜로디·코드를 땀. 노래가 점점 빨라짐"},
+      "D-DU-UDU", capo=3, vocab=G_SET)
+
+build("new-pearlyshells2", "Pearly Shells (Pūpū A ʻO ʻEwa) - Burl Ives",
+      {"title": "Pearly Shells (Pūpū A ʻO ʻEwa)", "artist": "Burl Ives", "key": "G",
+       "source": "Burl Ives 음원(bODjW88xrgQ)에서 박자·멜로디·코드를 땀"},
+      "D-DU-UDU", vocab=G_SET, force_vocab=True)
+build("new-hawaiialoha2", "Hawaiʻi Aloha - Lorenzo Lyons",
+      {"title": "Hawaiʻi Aloha", "artist": "Lorenzo Lyons (1800년대) · 연주 Ukulele Project Hawaii", "key": "G",
+       "source": "Ukulele Project Hawaii 플레이어롱 영상(LXX90mLXagQ)에서 박자·멜로디·코드를 땀. 앞 인사 말은 잘라 냄. 가사는 저작권 만료된 원곡 하와이어"},
+      "D-DU-UDU", vocab=G_SET, trim_bar=16, force_vocab=True)

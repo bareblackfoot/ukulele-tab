@@ -30,12 +30,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("sheet")
     ap.add_argument("asr")
+    ap.add_argument("--asr-scale", type=float, default=1.0, help="multiply the recogniser's columns (0.5 when the tempo was halved)")
     ap.add_argument("--asr-shift", type=int, default=0)
     a = ap.parse_args()
     s = json.loads(Path(a.sheet).read_text(encoding="utf-8"))
     spb = s["stepsPerBeat"]
     lyr = sorted(s["lyrics"], key=lambda e: e["col"])
-    heard = [{"col": x["col"] + a.asr_shift, "text": x["text"]}
+    heard = [{"col": x["col"] * a.asr_scale + a.asr_shift, "text": x["text"]}
              for line in json.loads(Path(a.asr).read_text(encoding="utf-8"))["lines"] for x in line.get("syllables", [])]
     pairs = lcs_pairs([e["text"] for e in lyr], [h["text"] for h in heard])
     beats = [(lyr[i]["col"] - heard[j]["col"]) / spb for i, j in pairs]
