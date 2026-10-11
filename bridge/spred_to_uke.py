@@ -46,11 +46,18 @@ def spred_parse(o):
                 rows.setdefault(int(m.group(1)), {})[int(c["col"])] = str(c.get("rawText", ""))
         notes = []
         for midi, cols in rows.items():
-            for col, txt in cols.items():
-                if not re.fullmatch(r"[A-G]#?-?\d", txt):
+            def inner(t):
+                # tuplet group "/3(...)" wraps the cell text; read what is inside on this cell
+                return re.sub(r"^/\d+\(", "", t or "")
+
+            for col, raw in cols.items():
+                # a note starts with its name ("E4", "C#5"), possibly followed by marks like "+@m(..)" or "@g(..)";
+                # the cells it holds start with "-" (plain hold) or "~" (held with vibrato); "//..." is a comment
+                txt = inner(raw)
+                if raw.startswith("//") or not re.match(r"[A-G]#?-?\d", txt):
                     continue
                 ln = 1
-                while cols.get(col + ln) == "-":
+                while inner(cols.get(col + ln))[:1] in ("-", "~"):
                     ln += 1
                 notes.append({"col": col, "len": ln, "midi": midi})
         if notes:

@@ -1,8 +1,7 @@
-// Game results: kept in this browser, and in the user's account when logged in (Apps Script web app).
-// Results made before logging in are uploaded once after login.
+// Game results: kept in this browser, and under the logged-in account on this PC (the bridge stores them in
+// a Google Drive folder). Results made before logging in are uploaded once after login.
 
-// address of the deployed Apps Script web app (backend/apps-script/Code.gs); empty until it is deployed
-export const API_URL = "";
+import { bridge, bridgeSettings } from "./bridge.js";
 
 const LOCAL = "uketab.records";
 const SESSION = "uketab.session";
@@ -14,50 +13,43 @@ const store = {
   del(k) { try { localStorage.removeItem(k); } catch (_) { /* blocked */ } },
 };
 
-async function api(body) {
-  if (!API_URL) throw new Error("기록 서버가 아직 설정되지 않음");
-  let res;
+async function post(path, body) {
   try {
-    // text/plain keeps this a simple request (no CORS preflight), which Apps Script web apps need
-    res = await fetch(API_URL, { method: "POST", body: JSON.stringify(body) });
-  } catch (_) {
-    throw new Error("기록 서버에 연결하지 못함");
+    return await bridge.post(path, body);
+  } catch (err) {
+    if (err.status === 401 && body.session) store.del(SESSION);
+    throw err;
   }
-  const data = await res.json().catch(() => ({ ok: false, error: "서버 응답을 읽지 못함" }));
-  if (!data.ok) {
-    if (/로그인/.test(data.error || "") && body.token) store.del(SESSION);
-    throw new Error(data.error || "기록 서버 오류");
-  }
-  return data;
 }
 
 export const records = {
   session() { return store.get(SESSION, null); },
-  available() { return !!API_URL; },
+  // accounts live on this PC, so they need the connection to the bridge
+  available() { return !!bridgeSettings().token; },
 
   local() { return store.get(LOCAL, []); },
 
   async signup(id, pin) {
-    const d = await api({ action: "signup", id, pin });
-    store.set(SESSION, { id: d.id, token: d.token });
+    const d = await post("/auth/signup", { id, pin });
+    store.set(SESSION, { id: d.id, session: d.session });
     await this.flush();
     return d.id;
   },
   async login(id, pin) {
-    const d = await api({ action: "login", id, pin });
-    store.set(SESSION, { id: d.id, token: d.token });
+    const d = await post("/auth/login", { id, pin });
+    store.set(SESSION, { id: d.id, session: d.session });
     await this.flush();
     return d.id;
   },
   async logout() {
     const s = this.session();
     store.del(SESSION);
-    if (s) { try { await api({ action: "logout", token: s.token }); } catch (_) { /* token is gone locally anyway */ } }
+    if (s) { try { await post("/auth/logout", { session: s.session }); } catch (_) { /* gone locally anyway */ } }
   },
   async changePin(oldPin, newPin) {
     const s = this.session();
     if (!s) throw new Error("로그인 필요");
-    await api({ action: "changePin", token: s.token, oldPin, newPin });
+    await post("/auth/pin", { session: s.session, oldPin, newPin });
   },
 
   // keep a result; returns the previous best score for the same song and judging setup (or null)
@@ -78,9 +70,9 @@ export const records = {
   async flush() {
     const s = this.session();
     const pending = store.get(PENDING, []);
-    if (!s || !pending.length || !API_URL) return;
+    if (!s || !pending.length) return;
     for (let i = 0; i < pending.length; i += 50) {
-      await api({ action: "save", token: s.token, results: pending.slice(i, i + 50) });
+      await post("/records/save", { session: s.session, results: pending.slice(i, i + 50) });
     }
     store.set(PENDING, []);
   },
@@ -89,9 +81,9 @@ export const records = {
   async all() {
     const local = this.local();
     const s = this.session();
-    if (!s || !API_URL) return { results: local, source: "browser" };
+    if (!s) return { results: local, source: "browser" };
     try {
-      const d = await api({ action: "list", token: s.token });
+      const d = await post("/records/list", { session: s.session });
       const seen = new Set(d.results.map((r) => `${r.time}|${r.song}`));
       const merged = d.results.concat(local.filter((r) => !seen.has(`${r.time}|${r.song}`)));
       merged.sort((a, b) => a.time - b.time);

@@ -28,7 +28,11 @@ async function call(path, { method = "GET", body } = {}) {
   }
   let data = null;
   try { data = await res.json(); } catch (_) { /* not json */ }
-  if (!res.ok) throw new Error((data && data.error) || `브리지 오류 ${res.status}`);
+  if (!res.ok) {
+    const err = new Error((data && data.error) || `브리지 오류 ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 
@@ -42,4 +46,5 @@ export const bridge = {
   library: () => call("/library"),
   libraryGet: (file) => call(`/library/${encodeURIComponent(file)}`),
   librarySave: (file, score) => call("/library", { method: "POST", body: { file, score } }),
+  post: (path, body) => call(path, { method: "POST", body }),
 };

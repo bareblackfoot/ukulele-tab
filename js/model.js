@@ -157,7 +157,9 @@ export function midiOf(note, tuningName, capo = 0) {
 
 // ---------------------------------------------------------------- imports
 
-const NOTE_RE = /^([A-G])(#?)(-?\d)$/;
+// a note cell starts with its name; marks may follow ("E4+@m(..)", "B4@g(..)")
+const NOTE_RE = /^([A-G])(#?)(-?\d)/;
+const isHold = (t) => t !== undefined && (t[0] === "-" || t[0] === "~"); // "-" hold, "~" hold with vibrato, marks may follow
 const PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
 function spredNotes(track) {
@@ -172,13 +174,15 @@ function spredNotes(track) {
   const out = [];
   let skipped = 0;
   for (const { midi, cols } of rows.values()) {
-    for (const [col, txt] of cols) {
-      if (txt === "-") continue;
+    for (const [col, raw] of cols) {
+      if (raw.startsWith("//")) continue; // a comment, not a note
+      const txt = raw.replace(/^\/\d+\(/, ""); // tuplet group "/3(...)": read the note inside on this cell
+      if (isHold(txt)) continue;
       const nm = NOTE_RE.exec(txt);
-      if (!nm) { skipped++; continue; }
+      if (!nm) { if (/[A-G]#?-?\d/.test(txt)) skipped++; continue; } // only count cells that look like a note
       const m2 = (parseInt(nm[3], 10) + 1) * 12 + PC[nm[1]] + (nm[2] ? 1 : 0);
       let len = 1;
-      while (cols.get(col + len) === "-") len++;
+      while (isHold((cols.get(col + len) || "").replace(/^\/\d+\(/, "") || undefined)) len++;
       out.push({ col, len, midi: Number.isFinite(m2) ? m2 : midi });
     }
   }

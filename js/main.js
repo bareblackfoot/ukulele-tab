@@ -898,6 +898,7 @@ brDlg.addEventListener("close", () => {
   if (brDlg.returnValue === "ok") {
     saveBridgeSettings({ url: brDlg.querySelector("[name=url]").value.trim(), token: brDlg.querySelector("[name=token]").value.trim() });
     refreshJobs();
+    syncAccount();
   }
 });
 
@@ -914,6 +915,7 @@ window.addEventListener("resize", () => { if (!editing) { sheet.render(score, se
   const hash = new URLSearchParams(location.hash.slice(1));
   if (hash.get("token")) {
     saveBridgeSettings({ ...bridgeSettings(), token: hash.get("token") });
+    syncAccount();
     history.replaceState(null, "", location.pathname + location.search);
   }
   try {
