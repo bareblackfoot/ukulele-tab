@@ -66,7 +66,10 @@ export class Practice {
       const { strings: tuning, names } = tuningOf(s.tuning);
       for (const t of s.tracks) {
         if (t.hidden || t.muted) continue;
-        for (const n of t.notes) out.push({ col: n.col, kind: "note", midi: tuning[n.string] + (s.capo || 0) + n.fret, label: `${names[n.string]}${n.fret}` });
+        for (const n of t.notes) {
+          const bend = n.tech && n.tech[0] === "b" ? +n.tech.slice(1) || 1 : 0;
+          out.push({ col: n.col, kind: "note", midi: tuning[n.string] + (s.capo || 0) + n.fret, bend, label: `${names[n.string]}${n.fret}${bend ? "b" : ""}` });
+        }
       }
     } else if (s.chords.length) {
       const firstChord = s.chords[0].col;
@@ -269,7 +272,10 @@ export class Practice {
     // guitar melody notes go down to about C3 (131 Hz); the ukulele's lowest string is G3/C4
     const { f0, clarity } = yin(x, sr, instOf(this.score.tuning).id === "guitar" ? 75 : 180);
     if (clarity < 0.5) return { grade: "bad", heard: "?" };
-    const cents = 1200 * Math.log2(f0 / (440 * 2 ** ((target.midi - 69) / 12)));
+    // a bent note is heard right after the pick (fretted pitch) or once pushed up (bent pitch): the closer one counts
+    const centsTo = (m) => 1200 * Math.log2(f0 / (440 * 2 ** ((m - 69) / 12)));
+    const c0 = centsTo(target.midi), c1 = target.bend ? centsTo(target.midi + target.bend) : Infinity;
+    const cents = Math.abs(c1) < Math.abs(c0) ? c1 : c0;
     const w = PITCH[this.mode];
     const a = Math.abs(cents);
     return { grade: a < w[0] ? "perfect" : a < w[1] ? "ok" : a < w[2] ? "bad" : "miss", heard: `${Math.round(f0)} Hz`, hz: f0 };

@@ -1,7 +1,7 @@
 // Chord sheet view: bars in lines (4 per line on wide screens), chord names with small diagrams above
 // the line, lyrics below, optional melody tab. Highlights the bar being played.
 
-import { computeBars, distinctChords, barAt } from "./model.js";
+import { computeBars, distinctChords, barAt, tabLabel } from "./model.js";
 import { diagramSVG } from "./diagram.js";
 import { tuningOf } from "./instrument.js";
 
@@ -29,7 +29,8 @@ export class SheetView {
     this.settings = settings;
     const bars = (this.bars = computeBars(score));
     const W = Math.max(320, Math.min(SHEET_MAX_W, this.root.clientWidth - 24));
-    const perLine = settings.barsPerLine || (W >= 760 ? 4 : W >= 540 ? 3 : 2);
+    // lead view: fast lines need room, so 2 bars a line unless the user chose a number
+    const perLine = settings.barsPerLine || (score.leadTrack ? (W >= 760 ? 2 : 1) : W >= 760 ? 4 : W >= 540 ? 3 : 2);
     const left = 26, right = 8;
     // the bar length most bars use; a full bar of it is one slot, other bars get width by their beats
     const lenCount = new Map();
@@ -40,10 +41,13 @@ export class SheetView {
     if (bars.length > 1 && bars[0].len < mainLen) i0 = 1; // pickup bar goes in front of the first line
     for (let i = i0; i < bars.length; i += perLine) lines.push(bars.slice(i === i0 && i0 ? 0 : i, i + perLine));
     if (!lines.length) lines.push(bars);
-    const showTab = settings.showTab && score.tracks.some((t) => !t.hidden && t.notes.length);
+    // lead view (score.leadTrack): only that line, its TAB big with note lengths; chord pictures left out
+    const lead = !!score.leadTrack;
+    const showTab = (settings.showTab || lead) && score.tracks.some((t) => !t.hidden && t.notes.length);
     const names = tuningOf(score.tuning).names, nStr = names.length, top = nStr - 1;
     const staffY = 50, lyricY = staffY + 19;
-    const tabTop = lyricY + 14, tabGap = 9;
+    const tabTop = lyricY + (lead ? 18 : 14), tabGap = lead ? 13 : 9;
+    const charW = lead ? 7.8 : 6;
     const H = showTab ? tabTop + tabGap * top + 12 : lyricY + 10;
     const tuning = score.tuning;
     const custom = score.chordShapes;
@@ -128,7 +132,7 @@ export class SheetView {
           const nameW = c.name.length * 8.6 + 2;
           g += `<text class="cname" x="${x}" y="${staffY - 8}">${esc(c.name)}</text>`;
           let end = x + nameW;
-          if (settings.miniDiagrams && c.name !== "N.C.") {
+          if (settings.miniDiagrams && !lead && c.name !== "N.C.") {
             const svg = diagramSVG(c.name, { tuning, custom, orient: "h", size: 26, numbers: false, title: false, cls: "mini" });
             g += `<g class="diag mini" transform="translate(${x + nameW - 2},${staffY - 30}) scale(0.9)">${svg.replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "")}</g>`;
             end += 34;
@@ -144,17 +148,25 @@ export class SheetView {
           g += `<text class="lyr" x="${x}" y="${lyricY}">${esc(l.text)}</text>`;
           lyricEnd = x + w;
         }
-        // melody tab
+        // melody tab; a number never runs into the one before it on the same string
         if (showTab) {
+          const ends = [];
           tracks.forEach((t, ti) => {
             const ns = t.notes;
             while (ni[ti] < ns.length && ns[ni[ti]].col < bar.start) ni[ti]++;
             for (let j = ni[ti]; j < ns.length && ns[j].col < bar.start + bar.len; j++) {
               const n = ns[j];
-              const x = xOf(n.col), y = tabTop + (top - n.string) * tabGap;
-              const txt = String(n.fret);
-              g += `<rect class="tabbg" x="${x - 1}" y="${y - 5}" width="${txt.length * 6 + 2}" height="10"/>`;
-              g += `<text class="tabnum t${ti}" x="${x}" y="${y + 3.5}">${txt}</text>`;
+              const txt = tabLabel(n, j > 0 ? ns[j - 1] : null);
+              const w = txt.length * charW + 2;
+              const x = Math.max(xOf(n.col), (ends[n.string] ?? -1e9) + 2), y = tabTop + (top - n.string) * tabGap;
+              ends[n.string] = x + w;
+              if (lead) {
+                // how long the note rings: a line from the number to where the note ends
+                const x2 = xOf(Math.min(n.col + n.len, bar.start + bar.len)) - 2;
+                if (x2 > x + w + 2) g += `<line class="tabdur t${ti}" x1="${x + w}" y1="${y}" x2="${x2}" y2="${y}"/>`;
+              }
+              g += `<rect class="tabbg" x="${x - 1}" y="${y - (lead ? 7 : 5)}" width="${w}" height="${lead ? 14 : 10}"/>`;
+              g += `<text class="tabnum t${ti}${lead ? " big" : ""}" x="${x}" y="${y + (lead ? 4.5 : 3.5)}">${esc(txt)}</text>`;
             }
           });
         }

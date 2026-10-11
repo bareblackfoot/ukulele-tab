@@ -6,20 +6,20 @@ import { tuningOf, instOf } from "./instrument.js";
 
 export const MAX_FRET = 15;
 
-export function playableRange(tuningName) {
+export function playableRange(tuningName, maxFret = instOf(tuningName).maxFret) {
   const st = tuningOf(tuningName).strings;
-  return { lo: Math.min(...st), hi: Math.max(...st) + instOf(tuningName).maxFret };
+  return { lo: Math.min(...st), hi: Math.max(...st) + maxFret };
 }
 
-export function bestOctaveShift(midis, tuningName) {
+export function bestOctaveShift(midis, tuningName, center = instOf(tuningName).melodyCenter, maxFret = undefined) {
   if (!midis.length) return 0;
-  const { lo, hi } = playableRange(tuningName);
+  const { lo, hi } = playableRange(tuningName, maxFret);
   const sorted = [...midis].sort((a, b) => a - b);
   const median = sorted[sorted.length >> 1];
   let best = null;
   for (let k = -36; k <= 36; k += 12) {
     const inRange = midis.filter((m) => m + k >= lo && m + k <= hi).length;
-    const score = inRange * 1000 - Math.abs(median + k - instOf(tuningName).melodyCenter) - Math.abs(k) * 0.01;
+    const score = inRange * 1000 - Math.abs(median + k - center) - Math.abs(k) * 0.01;
     if (!best || score > best.score) best = { k, score };
   }
   return best.k;
@@ -35,6 +35,8 @@ function candidates(m, strings, maxFret = MAX_FRET) {
 }
 
 const nodeCost = (c) => 0.15 * c.f + (c.f > 12 ? 1 : 0) + (c.f === 0 ? -0.1 : 0);
+// lead lines (solos, an electric guitar playing the tune) sit in a hand position up the neck, around fret 5..12
+const leadCost = (c) => 0.08 * Math.max(0, 5 - c.f) + 0.08 * Math.max(0, c.f - 12) + (c.f === 0 ? 0.5 : 0);
 
 function moveCost(a, b) {
   const ds = Math.abs(a.s - b.s);
@@ -43,12 +45,15 @@ function moveCost(a, b) {
   return 0.1 * df + Math.max(0, df - 2) * 0.6 + 0.1 * ds;
 }
 
-// notes: [{col, len, midi}] -> {notes: [{col, len, string, fret}], shift, folded}
-export function melodyToTab(notes, tuningName = "standard", octaveShift = undefined) {
+// notes: [{col, len, midi, tech?}] -> {notes: [{col, len, string, fret, tech?}], shift, folded}
+// opts: {lead: hand position up the neck, center: MIDI pitch the octave is chosen around, maxFret}
+// A note with a bend (tech "b1"/"b2") is never put on an open string.
+export function melodyToTab(notes, tuningName = "standard", octaveShift = undefined, opts = {}) {
   const strings = tuningOf(tuningName).strings;
-  const maxFret = instOf(tuningName).maxFret;
-  const { lo, hi } = playableRange(tuningName);
-  const shift = Number.isFinite(octaveShift) ? octaveShift : bestOctaveShift(notes.map((n) => n.midi), tuningName);
+  const maxFret = opts.maxFret || instOf(tuningName).maxFret;
+  const { lo, hi } = playableRange(tuningName, maxFret);
+  const node = opts.lead ? leadCost : nodeCost;
+  const shift = Number.isFinite(octaveShift) ? octaveShift : bestOctaveShift(notes.map((n) => n.midi), tuningName, opts.center, maxFret);
   let folded = 0;
   const pitched = notes.map((n) => {
     let m = n.midi + shift;
@@ -57,7 +62,7 @@ export function melodyToTab(notes, tuningName = "standard", octaveShift = undefi
       while (m < lo) m += 12;
       while (m > hi) m -= 12;
     }
-    return { col: n.col, len: n.len, m };
+    return { col: n.col, len: n.len, m, tech: n.tech };
   }).sort((a, b) => a.col - b.col || b.m - a.m);
 
   // group notes that start together; the top note of each group goes through the path search,
@@ -68,11 +73,15 @@ export function melodyToTab(notes, tuningName = "standard", octaveShift = undefi
     if (g && g.col === n.col) g.notes.push(n); else groups.push({ col: n.col, notes: [n] });
   }
   const lead = groups.map((g) => g.notes[0]);
-  const cand = lead.map((n) => candidates(n.m, strings, maxFret));
+  const cand = lead.map((n) => {
+    const cs = candidates(n.m, strings, maxFret);
+    const bent = n.tech && n.tech[0] === "b" ? cs.filter((c) => c.f > 0) : cs;
+    return bent.length ? bent : cs;
+  });
   // Viterbi over the lead line
   const cost = [], back = [];
   cand.forEach((cs, i) => {
-    cost.push(cs.map((c) => nodeCost(c)));
+    cost.push(cs.map((c) => node(c)));
     back.push(cs.map(() => -1));
     if (i === 0) return;
     cs.forEach((c, j) => {
@@ -93,7 +102,7 @@ export function melodyToTab(notes, tuningName = "standard", octaveShift = undefi
   const out = [];
   groups.forEach((g, i) => {
     const used = new Set([pick[i].s]);
-    out.push({ col: g.col, len: g.notes[0].len, string: pick[i].s, fret: pick[i].f });
+    out.push({ col: g.col, len: g.notes[0].len, string: pick[i].s, fret: pick[i].f, ...(g.notes[0].tech ? { tech: g.notes[0].tech } : {}) });
     for (const n of g.notes.slice(1)) {
       const cs = candidates(n.m, strings, maxFret).filter((c) => !used.has(c.s))
         .sort((a, b) => Math.abs(a.f - pick[i].f) - Math.abs(b.f - pick[i].f));

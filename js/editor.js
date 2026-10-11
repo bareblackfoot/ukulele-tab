@@ -1,7 +1,7 @@
 // Grid editor (similar to the SPRED editor): one column per step, rows for tempo, meter, sections,
 // chords, lyrics and the strings (highest on top). Click a cell, then type.
 
-import { computeBars, barAt } from "./model.js";
+import { computeBars, barAt, tabLabel, midiOf } from "./model.js";
 import { parseChord } from "./chords.js";
 import { tuningOf, INST } from "./instrument.js";
 
@@ -44,7 +44,7 @@ export class Editor {
         <button type="button" class="ed-addbars">4마디 추가</button>
         <button type="button" class="ed-undo">실행 취소</button>
         <button type="button" class="ed-redo">다시 실행</button>
-        <span class="hint">칸 누르고: 숫자 = 프렛 · Enter = 글자 입력 · Delete = 지우기 · [ ] = 음 길이 · 방향키 = 이동 · Space = 재생</span>
+        <span class="hint">칸 누르고: 숫자 = 프렛 · Enter = 글자 입력 · Delete = 지우기 · [ ] = 음 길이 · 방향키 = 이동 · Space = 재생 · 음 위에서 B 벤딩 · V 비브라토 · H 해머링/풀링 · S 슬라이드</span>
       </div>
       <div class="ed-scroll" tabindex="0"><canvas class="ed-canvas"></canvas><div class="ed-spacer"></div></div>`;
     this.scroll = root.querySelector(".ed-scroll");
@@ -184,8 +184,8 @@ export class Editor {
       if (t.hidden && ti !== this.track) return;
       const col = TRACK_COLORS[ti % TRACK_COLORS.length];
       const alpha = ti === this.track ? 1 : 0.35;
-      for (const n of t.notes) {
-        if (n.col + n.len < c0 || n.col > c1) continue;
+      t.notes.forEach((n, j) => {
+        if (n.col + n.len < c0 || n.col > c1) return;
         const ri = ROWS.findIndex((r) => r.string === n.string);
         const y = this.rowTop(ri);
         const x = this.xOf(n.col);
@@ -194,14 +194,14 @@ export class Editor {
         c.fillRect(x + 1, y + 4, n.len * cw - 2, ROWS[ri].h - 8);
         c.globalAlpha = alpha;
         c.fillStyle = paper;
-        const label = String(n.fret);
+        const label = tabLabel(n, j > 0 ? t.notes[j - 1] : null);
         c.font = "bold 12px ui-monospace, Consolas, monospace";
         const w = c.measureText(label).width + 4;
         c.fillRect(x + 1, y + 4, w, ROWS[ri].h - 8);
         c.fillStyle = col;
         c.fillText(label, x + 3, y + ROWS[ri].h / 2 + 4);
         c.globalAlpha = 1;
-      }
+      });
     });
     // loop range
     if (this.loop) {
@@ -322,6 +322,31 @@ export class Editor {
         return;
       }
       if (k === "Enter") { e.preventDefault(); this.sel.col = Math.min(this.score.columnCount - 1, this.sel.col + this.newLen); this.draw(); }
+      // playing marks on the note under the cursor: B bend (1, 2 semitones, none), V vibrato, H hammer-on or
+      // pull-off (by the note before), S slide
+      const mk = k.toLowerCase();
+      if (["b", "v", "h", "s"].includes(mk) && !e.ctrlKey && !e.metaKey) {
+        const n = this.noteAt(row.string, this.sel.col);
+        if (!n) return;
+        e.preventDefault();
+        const notes = this.score.tracks[this.track].notes;
+        const idx = notes.indexOf(n);
+        const before = notes.slice(0, idx).reverse().find((m) => m.col < n.col);
+        const cur = n.tech || "";
+        let next = "";
+        if (mk === "b") next = cur === "b1" ? "b2" : cur === "b2" ? "" : "b1";
+        else if (mk === "v") next = cur === "v" ? "" : "v";
+        else if (mk === "s") next = cur === "s" ? "" : "s";
+        else if (before) {
+          const up = midiOf(n, this.score.tuning) > midiOf(before, this.score.tuning);
+          next = cur === "h" || cur === "p" ? "" : up ? "h" : "p";
+        }
+        this.change((s) => {
+          const m = s.tracks[this.track].notes[idx];
+          if (next) m.tech = next; else delete m.tech;
+        }, "연주 기법");
+        return;
+      }
       return;
     }
     if (k === "Enter" || k === "F2") { e.preventDefault(); this.openInput(null); return; }

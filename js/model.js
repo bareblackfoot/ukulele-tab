@@ -80,10 +80,11 @@ export function normalizeScore(o) {
     name: String(t.name || t.id || `트랙 ${i + 1}`),
     hidden: !!t.hidden,
     muted: !!t.muted,
+    ...(t.absolute ? { absolute: true } : {}), // notes at the recording's pitch (a solo taken from it): never moved by octaves
     notes: (t.notes || []).map((n) => ({
       col: Math.max(0, int(n.col)), len: Math.max(1, int(n.len, 1)),
       string: Math.max(0, Math.min(lastString, int(n.string))), fret: Math.max(0, Math.min(24, int(n.fret))),
-      ...(n.tech ? { tech: String(n.tech) } : {}),
+      ...(n.tech ? { tech: String(n.tech).slice(0, 8) } : {}),
     })),
   }));
   s.chordShapes = o.chordShapes && typeof o.chordShapes === "object" ? { ...o.chordShapes } : {};
@@ -183,6 +184,19 @@ export function distinctChords(score) {
   return seen;
 }
 
+// Playing marks (note.tech): "b1"/"b2" bend up 1 or 2 semitones, "v" vibrato, "h" hammer-on, "p" pull-off,
+// "s" slide from the note before. TAB text: "7b9" (bend from fret 7 until it sounds like fret 9), "7~", "h7",
+// "p5", "/9" or "\5" (slide up or down into the fret).
+export const TECHS = ["b1", "b2", "v", "h", "p", "s"];
+export function tabLabel(n, prev = null) {
+  const t = n.tech || "";
+  if (t === "h" || t === "p") return t + n.fret;
+  if (t === "s") return (prev && prev.fret > n.fret ? "\\" : "/") + n.fret;
+  if (t[0] === "b") return `${n.fret}b${n.fret + (+t.slice(1) || 1)}`;
+  if (t === "v") return `${n.fret}~`;
+  return String(n.fret);
+}
+
 export function midiOf(note, tuningName, capo = 0) {
   return tuningOf(tuningName).strings[note.string] + capo + note.fret;
 }
@@ -194,8 +208,8 @@ export function retune(s, newTuning, newCapo, k = 0, octave = 0) {
   const oldCapo = s.capo || 0;
   const shapeShift = k - (newCapo - oldCapo);
   for (const t of s.tracks) {
-    const mel = t.notes.map((n) => ({ col: n.col, len: n.len, midi: midiOf(n, s.tuning, oldCapo) + k - newCapo }));
-    t.notes = melodyToTab(mel, newTuning, octave).notes;
+    const mel = t.notes.map((n) => ({ col: n.col, len: n.len, midi: midiOf(n, s.tuning, oldCapo) + k - newCapo, tech: n.tech }));
+    t.notes = melodyToTab(mel, newTuning, t.absolute ? 0 : octave, t.absolute ? { lead: true } : {}).notes;
   }
   if (shapeShift) {
     const moved = s.chords.map((c) => (c.name === "N.C." ? c.name : transposeChord(c.name, shapeShift)));

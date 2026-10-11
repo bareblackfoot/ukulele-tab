@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chordShape, shapeFitsChord, QUALITIES, NOTE_NAMES_SHARP, lowestPc, capoChoices, transposeChord, parseChord } from "../js/chords.js";
-import { newScore, normalizeScore, toInstrument, midiOf } from "../js/model.js";
+import { newScore, normalizeScore, toInstrument, midiOf, tabLabel, retune } from "../js/model.js";
 import { melodyToTab } from "../js/fingering.js";
 
 const GTR = [40, 45, 50, 55, 59, 64];
@@ -80,4 +80,25 @@ test("a ukulele sheet becomes a guitar sheet with the same sound", () => {
   assert.equal(after.length, before.length);
   after.forEach((m, i) => assert.equal(Math.abs(m - before[i]) % 12, 0));
   assert.ok(g.tracks[0].notes.every((n) => n.string >= 0 && n.string <= 5 && n.fret <= 17));
+});
+
+test("playing marks are written the usual TAB way and kept through a capo change", () => {
+  assert.equal(tabLabel({ fret: 7, tech: "b2" }), "7b9");
+  assert.equal(tabLabel({ fret: 7, tech: "b1" }), "7b8");
+  assert.equal(tabLabel({ fret: 5, tech: "v" }), "5~");
+  assert.equal(tabLabel({ fret: 7, tech: "h" }, { fret: 5 }), "h7");
+  assert.equal(tabLabel({ fret: 5, tech: "p" }, { fret: 7 }), "p5");
+  assert.equal(tabLabel({ fret: 9, tech: "s" }, { fret: 7 }), "/9");
+  assert.equal(tabLabel({ fret: 5, tech: "s" }, { fret: 7 }), "\\5");
+  // a solo taken from the recording (absolute) keeps its pitch, octave included, and its marks; a bend never
+  // lands on an open string
+  const notes = melodyToTab([64, 67, 69, 71, 76].map((m, i) => ({ col: i * 4, len: 4, midi: m, tech: i === 0 ? "b2" : i === 2 ? "v" : undefined })), "guitar", 0, { lead: true });
+  assert.ok(notes.notes[0].fret > 0, "bent note on an open string");
+  const s = normalizeScore({ ...newScore(), tuning: "guitar", capo: 3, tracks: [{ id: "lead", name: "솔로", absolute: true, notes: notes.notes }] });
+  const before = s.tracks[0].notes.map((n) => midiOf(n, s.tuning, s.capo));
+  const t = retune(JSON.parse(JSON.stringify(s)), "guitar", 0, 0, null);
+  const after = t.tracks[0].notes.map((n) => midiOf(n, t.tuning, t.capo));
+  assert.deepEqual(after, before);
+  assert.deepEqual(t.tracks[0].notes.map((n) => n.tech || ""), ["b2", "", "v", "", ""]);
+  assert.equal(t.tracks[0].absolute, true);
 });

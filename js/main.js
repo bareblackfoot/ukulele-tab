@@ -1,4 +1,5 @@
-import { newScore, loadAnyFormat, normalizeScore, toJSON, TimeMap, computeBars, barAt, retune } from "./model.js";
+import { newScore, loadAnyFormat, normalizeScore, toJSON, TimeMap, computeBars, barAt, retune, midiOf } from "./model.js";
+import { melodyToTab } from "./fingering.js";
 import { transposeChord, TUNINGS, capoChoices, powerChord } from "./chords.js";
 import { INST, INSTRUMENTS, tuningsOf, skey } from "./instrument.js";
 import { SheetView } from "./sheet.js";
@@ -26,7 +27,8 @@ const store = {
 };
 
 const DEFAULT_SETTINGS = { miniDiagrams: true, showTab: false, follow: true, orient: "h", upcoming: 4, barsPerLine: 0,
-  electric: false, power: false, drive: "clean" }; // the last three: electric guitar mode (guitar site only)
+  electric: false, power: false, drive: "clean", leadHigh: true, // electric guitar mode (guitar site only)
+  lead: false, leadTrack: "" };                                      // lead view: one line's TAB big
 const settings = { ...DEFAULT_SETTINGS, ...store.get(skey("settings"), {}) };
 
 let score = newScore();
@@ -106,14 +108,45 @@ function electricView(src) {
   if (fromCapo) retune(s, s.tuning, 0, 0, 0);
   s.meta.key = (s.meta.key || "").replace(/\s*\(.*\)\s*$/, "");
   if (settings.power) s.chords = s.chords.map((c) => ({ ...c, name: c.name === "N.C." ? c.name : powerChord(c.name) }));
+  // an electric guitar plays the tune where it is sung (the acoustic sheet has it an octave lower), up the neck
+  if (settings.leadHigh) {
+    for (const t of s.tracks) {
+      const mel = t.notes.map((n) => ({ col: n.col, len: n.len, midi: midiOf(n, s.tuning, 0), tech: n.tech }));
+      t.notes = melodyToTab(mel, s.tuning, t.absolute ? 0 : null, { lead: true, center: 72, maxFret: 22 }).notes;
+    }
+  }
   const out = normalizeScore(s);
   out.electric = { fromCapo, power: !!settings.power };
   return out;
 }
 
+// the line chosen in 보기 > 칠 줄 (default: a lead track taken from the recording, else the sung melody)
+function leadId(s) {
+  if (s.tracks.some((t) => t.id === settings.leadTrack)) return settings.leadTrack;
+  return (s.tracks.find((t) => t.id === "lead") || s.tracks[0]).id;
+}
+
+// lead view: only the chosen line is drawn, heard and judged
+function leadView(src) {
+  const s = normalizeScore(JSON.parse(toJSON(src)));
+  if (src.electric) s.electric = src.electric;
+  const id = leadId(s);
+  for (const t of s.tracks) { const on = t.id === id; t.hidden = !on; t.muted = !on; }
+  s.leadTrack = id;
+  return s;
+}
+
+function fillLeadTracks() {
+  const sel = $(".lead-track");
+  sel.replaceChildren(...score.tracks.map((t) => new Option(`${t.name} (${t.notes.length}음)`, t.id)));
+  sel.value = leadId(score);
+}
+
 // hand the sheet (or its electric view) to everything that shows or plays it
 function showScore() {
   shown = electricOn() ? electricView(score) : score;
+  if (settings.lead) shown = leadView(shown);
+  fillLeadTracks();
   engine.setTone(electricOn() ? settings.drive : "acoustic");
   player.setScore(shown);
   practice.setScore(shown);
@@ -401,7 +434,7 @@ for (const el of $$("[data-set]")) {
   el.addEventListener("change", () => {
     settings[k] = el.type === "checkbox" ? el.checked : (isNaN(+el.value) ? el.value : +el.value);
     store.set(skey("settings"), settings);
-    if (k === "power" || k === "drive") showScore();
+    if (["power", "drive", "lead", "leadHigh"].includes(k)) showScore();
     else {
       chordbar.setScore(shown, settings);
       sheet.render(shown, settings);
@@ -684,6 +717,12 @@ document.addEventListener("keydown", (e) => {
 $("[data-act=other-site]").textContent = INST.id === "guitar" ? "우쿨렐레 악보 사이트로" : "기타 악보 사이트로";
 
 syncKind();
+$(".lead-track").addEventListener("change", (e) => {
+  settings.leadTrack = e.target.value;
+  store.set(skey("settings"), settings);
+  showScore();
+  updatePosition(player.position());
+});
 
 // sound input for the microphone checks (an audio interface with a guitar plugged in, a USB microphone ...)
 const devSel = $(".input-dev");

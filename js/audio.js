@@ -153,11 +153,25 @@ export class Engine {
     return buf;
   }
 
-  // returns a handle with stop(time)
-  note(midi, when, dur, gain, bus) {
+  // returns a handle with stop(time); tech: playing mark of a melody note (bend, vibrato, hammer-on ...)
+  note(midi, when, dur, gain, bus, tech = "") {
     const ctx = this.ctx;
     const src = ctx.createBufferSource();
     src.buffer = this.pluck(midi);
+    if (tech[0] === "b") {
+      // the string is pushed up after the attack and held there
+      src.detune.setValueAtTime(0, when + 0.04);
+      src.detune.linearRampToValueAtTime(100 * (+tech.slice(1) || 1), when + Math.min(0.2, 0.04 + dur * 0.4));
+    } else if (tech === "v") {
+      const lfo = ctx.createOscillator(), depth = ctx.createGain();
+      lfo.frequency.value = 5.5;
+      depth.gain.setValueAtTime(0, when);
+      depth.gain.linearRampToValueAtTime(30, when + Math.min(0.3, dur * 0.5));
+      lfo.connect(depth).connect(src.detune);
+      lfo.start(when);
+      lfo.stop(when + Math.min(dur, 2.3) + 0.3);
+    }
+    if (tech === "h" || tech === "p" || tech === "s") gain *= 0.7; // no pick attack: the left hand sounds the note
     const g = ctx.createGain();
     g.gain.setValueAtTime(0, when);
     g.gain.linearRampToValueAtTime(gain, when + 0.004);
@@ -344,7 +358,7 @@ export class Player {
           const dur = (this.tm.colToTime(n.col + n.len) - this.tm.colToTime(n.col)) / this.rate;
           const old = this.melodyVoices[n.string];
           if (old && old.end > when) old.stop(when);
-          this.melodyVoices[n.string] = this.engine.note(tuning[n.string] + (s.capo || 0) + n.fret, when, dur + 0.05, 0.55, this.engine.melodyBus);
+          this.melodyVoices[n.string] = this.engine.note(tuning[n.string] + (s.capo || 0) + n.fret, when, dur + 0.05, 0.55, this.engine.melodyBus, n.tech || "");
         }
       }
       // chords

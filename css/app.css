@@ -94,6 +94,9 @@ input[type="text"], input[type="number"] { background: var(--btn); border: 1px s
 .tablab, .barno { fill: var(--ink2); font-size: 9px; }
 .tabbg { fill: var(--paper); }
 .tabnum { font: 600 10px ui-monospace, Menlo, Consolas, monospace; }
+.tabnum.big { font-size: 13px; font-weight: 700; }
+.tabdur { stroke-width: 2; opacity: 0.45; }
+.tabdur.t0 { stroke: var(--t0); } .tabdur.t1 { stroke: var(--t1); } .tabdur.t2 { stroke: var(--t2); }
 .tabnum.t0 { fill: var(--t0); } .tabnum.t1 { fill: var(--t1); } .tabnum.t2 { fill: var(--t2); }
 .cname { font-weight: 700; font-size: 15px; fill: var(--ink); }
 .lyr { font-size: 13px; fill: var(--ink); }

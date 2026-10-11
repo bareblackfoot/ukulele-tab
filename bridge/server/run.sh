@@ -24,4 +24,5 @@ EOF
 export LD_LIBRARY_PATH="${LIBS}:${LD_LIBRARY_PATH:-}"
 export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 TOKENIZERS_PARALLELISM=false
 if [ "${1:-}" = "--sync-check" ]; then shift; exec python sync_check.py "$@"; fi
+if [ "${1:-}" = "--lead" ]; then shift; exec python lead_track.py "$@"; fi
 exec python analyze.py "$@"
