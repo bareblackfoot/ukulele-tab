@@ -1,6 +1,6 @@
 """Local bridge: lets the ukulele web page ask Claude Code on this PC to transcribe a YouTube video.
 
-    pythonw D:/codes/ukulele-tab/bridge/bridge.py            run the server (127.0.0.1:8765)
+    pythonw D:/codes/ukulele-tab/bridge/bridge.py            run the server (127.0.0.1:47615)
     python  D:/codes/ukulele-tab/bridge/bridge.py --token    print the pairing token and the pairing link
 
 Security: listens on 127.0.0.1 only; every request needs the token in X-Bridge-Token; browser requests are
@@ -30,9 +30,9 @@ HERE = Path(__file__).resolve().parent
 JOBS = HERE / "jobs"
 LOGS = HERE / "logs"
 USER = Path(os.environ.get("USERPROFILE", str(Path.home())))
-STATE_DIR = Path(os.environ.get("LOCALAPPDATA", str(USER))) / "ukulele-bridge"
+STATE_DIR = HERE / "state"   # not %LOCALAPPDATA%: the Store build of Python redirects writes there
 TOKEN_FILE = STATE_DIR / "token.txt"
-PORT = int(os.environ.get("UKE_BRIDGE_PORT", "8765"))
+PORT = int(os.environ.get("UKE_BRIDGE_PORT", "47615"))  # 8765 is taken by another app on this PC
 PAGE = "https://bareblackfoot.github.io/ukulele-tab/"
 ALLOWED_ORIGIN = re.compile(r"^(https://bareblackfoot\.github\.io|http://(127\.0\.0\.1|localhost)(:\d+)?)$")
 CLAUDE_EXE = Path(os.environ.get("APPDATA", str(USER / "AppData" / "Roaming"))) / "npm" / "node_modules" / "@anthropic-ai" / "claude-code" / "bin" / "claude.exe"

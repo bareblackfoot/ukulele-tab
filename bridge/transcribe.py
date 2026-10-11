@@ -34,8 +34,7 @@ def say(msg):
     print(line, flush=True)
     if PROGRESS:
         with open(PROGRESS, "a", encoding="utf-8") as f:
-            f.write(line + "
-")
+            f.write(line + "\n")
 
 
 def tool(name, extra=()):

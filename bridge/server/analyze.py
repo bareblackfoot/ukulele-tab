@@ -410,7 +410,7 @@ def chords_from_audio(harm, bass, sr, beat_times, bar_starts, beats_per_bar):
 
 # ---------------------------------------------------------------- lyrics
 
-SMALL_KANA = set("ゃゅょぁぃぅぇぉゎャュョァィゥェォヮ")
+SMALL_KANA = set("ゃゅょぁぃぅぇぉゎャュョァィゥェォヮっッー")  # sung together with the kana before them
 
 
 def units_of(word):

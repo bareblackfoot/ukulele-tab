@@ -4,9 +4,9 @@ const KEY = "uketab.bridge";
 
 export function bridgeSettings() {
   try {
-    return { url: "http://127.0.0.1:8765", token: "", ...JSON.parse(localStorage.getItem(KEY) || "{}") };
+    return { url: "http://127.0.0.1:47615", token: "", ...JSON.parse(localStorage.getItem(KEY) || "{}") };
   } catch (_) {
-    return { url: "http://127.0.0.1:8765", token: "" };
+    return { url: "http://127.0.0.1:47615", token: "" };
   }
 }
 

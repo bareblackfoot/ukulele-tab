@@ -16,7 +16,7 @@ import sys
 import unicodedata
 from pathlib import Path
 
-SMALL_KANA = set("ゃゅょぁぃぅぇぉゎャュョァィゥェォヮ")
+SMALL_KANA = set("ゃゅょぁぃぅぇぉゎャュョァィゥェォヮっッー")  # sung together with the kana before them
 
 
 def units_of(text):
