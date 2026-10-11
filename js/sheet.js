@@ -64,6 +64,7 @@ export class SheetView {
     for (let L = 0; L < lineCount; L++) {
       const lb = bars.slice(L * perLine, L * perLine + perLine);
       let g = "";
+      let under = "";   // bar highlight boxes go below the lines so the lines stay visible
       g += `<line class="staff" x1="${left}" y1="${staffY}" x2="${left + barW * lb.length}" y2="${staffY}"/>`;
       if (showTab) {
         for (let s = 0; s < 4; s++) {
@@ -77,7 +78,7 @@ export class SheetView {
         const x0 = left + k * barW, x1 = x0 + barW;
         this.geo[bar.index] = { line: L, x0, x1 };
         const xOf = (col) => x0 + 7 + ((col - bar.start) / bar.len) * (barW - 14);
-        g += `<rect class="bar-hl" data-bar="${bar.index}" x="${x0}" y="${staffY - 44}" width="${barW}" height="${H - staffY + 44 - 2}"/>`;
+        under += `<rect class="bar-hl" data-bar="${bar.index}" x="${x0}" y="${staffY - 44}" width="${barW}" height="${H - staffY + 44 - 2}"/>`;
         const yb0 = staffY - 9, yb1 = showTab ? tabTop + tabGap * 3 : staffY + 9;
         g += `<line class="barline" x1="${x1}" y1="${yb0}" x2="${x1}" y2="${yb1}"/>`;
         if (k === 0) g += `<line class="barline" x1="${x0}" y1="${yb0}" x2="${x0}" y2="${yb1}"/>`;
@@ -130,7 +131,7 @@ export class SheetView {
         }
       });
       g += `<line class="cursor" x1="0" y1="${staffY - 40}" x2="0" y2="${H - 4}" visibility="hidden"/>`;
-      parts.push(`<div class="sheet-line" data-line="${L}"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${g}</svg></div>`);
+      parts.push(`<div class="sheet-line" data-line="${L}"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${under}${g}</svg></div>`);
     }
     this.root.innerHTML = parts.join("");
     this.lines = [...this.root.querySelectorAll(".sheet-line")].map((el) => ({
