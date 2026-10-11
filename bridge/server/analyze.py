@@ -146,15 +146,25 @@ def build_grid(beats, downbeats, duration, spb):
     if constant:
         tempo = [{"col": 0, "bpm": round(60.0 / T, 2)}]
     else:
-        tempo, cur_bpm = [], None
-        for i, bs in enumerate(bar_starts):
-            be = bar_starts[i + 1] if i + 1 < len(bar_starts) else min(bs + M, len(beat_times) - 1)
-            if be <= bs or be >= len(beat_times):
-                continue
-            bpm = 60.0 * (be - bs) / (beat_times[be] - beat_times[bs])
-            if cur_bpm is None or abs(bpm - cur_bpm) > 0.25:
-                tempo.append({"col": bs * spb, "bpm": round(bpm, 2)})
-                cur_bpm = bpm
+        # one tempo per stretch of bars: grow the stretch while a straight line through its first and last bar
+        # stays within 60 ms of every bar line in between, then start a new tempo there
+        starts = [b for b in bar_starts if b < len(beat_times)]
+        if starts[-1] != len(beat_times) - 1:
+            starts.append(len(beat_times) - 1)
+        tempo, s = [], 0
+        while s < len(starts) - 1:
+            e = s + 1
+            while e + 1 < len(starts):
+                b0, b1 = starts[s], starts[e + 1]
+                rate = (beat_times[b1] - beat_times[b0]) / (b1 - b0)
+                if max(abs(beat_times[starts[k]] - (beat_times[b0] + (starts[k] - b0) * rate)) for k in range(s, e + 2)) > 0.06:
+                    break
+                e += 1
+            b0, b1 = starts[s], starts[e]
+            bpm = 60.0 * (b1 - b0) / (beat_times[b1] - beat_times[b0])
+            if not tempo or abs(bpm - tempo[-1]["bpm"]) > 0.01:
+                tempo.append({"col": b0 * spb, "bpm": round(bpm, 3)})
+            s = e
         tempo[0]["col"] = 0
     n_beats = len(beat_times) - 1
     last_bar_end = bar_starts[-1] + (meter[-1]["beats"] if meter else M)
@@ -164,6 +174,32 @@ def build_grid(beats, downbeats, duration, spb):
         "irregular_bars": irregular, "column_count": int(max(n_beats, last_bar_end) * spb),
         "bpm_estimate": 60.0 / T,
     }
+
+
+def grid_from_file(path):
+    """Beat grid from a score's own tempo map. Video time of column c = t0 + time(c), t0 = -offsetMs/1000."""
+    d = json.load(open(path, encoding="utf-8"))
+    spb = int(d.get("stepsPerBeat", 4))
+    tempo = sorted(d["tempo"], key=lambda e: e["col"])
+    meter = sorted(d["meter"], key=lambda e: e["col"])
+    tm = TimeMap(tempo, spb)
+    t0 = -float(d.get("offsetMs", 0)) / 1000
+    n_beats = int(math.ceil(d["columnCount"] / spb))
+    beat_times = np.array([t0 + tm.col_to_time(k * spb) for k in range(n_beats + 1)])
+    bar_starts, col, mi = [], 0, 0
+    while col < d["columnCount"]:
+        while mi + 1 < len(meter) and meter[mi + 1]["col"] <= col:
+            mi += 1
+        ln = int(meter[mi]["beats"]) * spb
+        nxt = meter[mi + 1]["col"] if mi + 1 < len(meter) else None
+        if nxt is not None and col < nxt < col + ln:
+            ln = nxt - col
+        bar_starts.append(col // spb)
+        col += ln
+    beats_per_bar = int(np.bincount([int(m["beats"]) for m in meter]).argmax()) if meter else 4
+    return {"beat_times": beat_times, "t0": t0, "tempo": tempo, "meter": meter, "bar_starts": bar_starts,
+            "constant": len(tempo) == 1, "resid_p95_ms": 0.0, "resid_max_ms": 0.0, "beats_per_bar": beats_per_bar,
+            "irregular_bars": 0, "column_count": int(d["columnCount"]), "bpm_estimate": tempo[0]["bpm"], "spb": spb}
 
 
 # ---------------------------------------------------------------- melody notes from a pitch track
@@ -413,6 +449,12 @@ def chords_from_audio(harm, bass, sr, beat_times, bar_starts, beats_per_bar):
 SMALL_KANA = set("ゃゅょぁぃぅぇぉゎャュョァィゥェォヮっッー")  # sung together with the kana before them
 
 
+# Whisper (large-v3) often writes these on music without words; compared with spaces removed
+WHISPER_FILLERS = ["다음영상에서만나요", "시청해주셔서감사합니다", "구독과좋아요", "자막제공", "배달의민족", "한글자막",
+                   "MBC뉴스", "KBS뉴스", "자막by", "ご視聴ありがとうございました", "チャンネル登録", "Thanksforwatching",
+                   "Subtitlesby", "字幕"]
+
+
 def units_of(word):
     """Split a word into sung units: Hangul syllables, kana morae, other words whole."""
     w = unicodedata.normalize("NFC", word.strip())
@@ -487,6 +529,7 @@ def main():
     ap.add_argument("--no-lyrics", action="store_true")
     ap.add_argument("--no-inst", action="store_true")
     ap.add_argument("--spb", type=int, default=4)
+    ap.add_argument("--grid", default=None, help="JSON with stepsPerBeat, tempo, meter, columnCount, offsetMs (skip beat tracking)")
     args = ap.parse_args()
     job = args.job
     spb = args.spb
@@ -523,11 +566,16 @@ def main():
     mix = x.mean(1)
 
     # 2. beats and bars
-    from beat_this.inference import Audio2Beats
-    a2b = Audio2Beats(checkpoint_path="final0", device=device, dbn=False)
-    beats, downbeats = a2b(mix, sr)
-    del a2b
-    g = build_grid(beats, downbeats, duration, spb)
+    if args.grid:
+        g = grid_from_file(args.grid)
+        spb = g["spb"]
+        beats = g["beat_times"]
+    else:
+        from beat_this.inference import Audio2Beats
+        a2b = Audio2Beats(checkpoint_path="final0", device=device, dbn=False)
+        beats, downbeats = a2b(mix, sr)
+        del a2b
+        g = build_grid(beats, downbeats, duration, spb)
     tm = TimeMap(g["tempo"], spb)
     t0 = g["t0"]
     to_col = lambda t: tm.time_to_col(t - t0)
@@ -609,6 +657,9 @@ def main():
             text = s.text.strip()
             if not text or not s.words:
                 continue
+            flat = re.sub(r"\s+", "", text)
+            if any(p in flat for p in WHISPER_FILLERS):
+                continue  # sentences Whisper writes on silence (video outros, subtitle credits)
             a, b = int(s.start / 0.01), int(s.end / 0.01)
             vf = float(voiced[a:b].mean()) if b > a else 0.0
             if vf < 0.2:

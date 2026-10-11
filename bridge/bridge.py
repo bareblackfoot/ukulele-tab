@@ -6,7 +6,7 @@
 Security: listens on 127.0.0.1 only; every request needs the token in X-Bridge-Token; browser requests are
 accepted only from the page's origin; the request body is reduced to a video id and a few fixed options, so
 nothing typed on the web page reaches Claude's prompt. Claude runs with a fixed prompt and may only run the
-two scripts in this folder, read and write inside the job folder, and search the web for lyrics.
+two scripts in this folder and read and write inside the job folder.
 
 Jobs live in bridge/jobs/<id>/ (job.json, progress.log, result.json ...). Log: bridge/logs/bridge.log (appended).
 bridge/logs/LAST_FAILURE.txt exists while the last job failed.
@@ -40,6 +40,9 @@ SWITCH_STATE = USER / ".claude" / "account-switch" / "state.json"
 ACCOUNTS = ["claude-team", "claude-team2"]
 NOWIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 JOB_TIMEOUT = 45 * 60
+# my own sheets (lyrics are copyrighted, so they live here and not in the public repo)
+LIBRARY = Path(os.environ.get("UKE_LIBRARY", r"G:\내 드라이브\2.취미생활\우쿨렐레\악보"))
+LIB_NAME = re.compile(r"^[^\\/:*?\"<>|]{1,120}\.json$")
 PY = sys.executable.replace("pythonw.exe", "python.exe")
 
 LOGS.mkdir(parents=True, exist_ok=True)
@@ -118,6 +121,46 @@ def list_jobs():
     return sorted(out, key=lambda j: j.get("created") or 0, reverse=True)[:50]
 
 
+# ---------------------------------------------------------------- library
+
+_lib_cache = {}
+
+
+def library_list():
+    out = []
+    if not LIBRARY.exists():
+        return out
+    for f in sorted(LIBRARY.glob("*.json")):
+        try:
+            st = f.stat()
+            key = (f.name, st.st_mtime)
+            if key not in _lib_cache:
+                d = json.loads(f.read_text(encoding="utf-8"))
+                m = d.get("meta", {})
+                _lib_cache[key] = {"file": f.name, "title": m.get("title") or f.stem, "artist": m.get("artist", ""),
+                                   "key": m.get("key", ""), "capo": d.get("capo", 0), "source": m.get("source", ""),
+                                   "chords": len(d.get("chords", [])), "lyrics": len(d.get("lyrics", [])), "updated": st.st_mtime}
+            out.append(_lib_cache[key])
+        except Exception as e:
+            out.append({"file": f.name, "title": f.stem, "error": str(e)[:120]})
+    return out
+
+
+def library_save(name, score):
+    if not LIB_NAME.match(name or ""):
+        raise ValueError("파일 이름 형식이 아님")
+    if (score.get("format") or {}).get("name") != "ukulele-sheet":
+        raise ValueError("우쿨렐레 악보 형식이 아님")
+    LIBRARY.mkdir(parents=True, exist_ok=True)
+    target = LIBRARY / name
+    if target.exists():  # keep the previous version
+        old = LIBRARY / "이전판"
+        old.mkdir(exist_ok=True)
+        os.replace(target, old / f"{target.stem}_{time.strftime('%Y%m%d-%H%M%S')}.json")
+    target.write_text(json.dumps(score, ensure_ascii=False, indent=1), encoding="utf-8")
+    return name
+
+
 # ---------------------------------------------------------------- running Claude
 
 PROMPT = """너는 이 PC에서 우쿨렐레 악보를 자동으로 따는 작업자임. 이 일 말고 다른 일은 하지 않음.
@@ -130,15 +173,12 @@ PROMPT = """너는 이 PC에서 우쿨렐레 악보를 자동으로 따는 작�
    python D:/codes/ukulele-tab/bridge/transcribe.py --video {vid} --job "{job}" {opts} --reuse-audio
    실패하면 출력 마지막 줄을 보고 같은 명령을 한 번만 다시 실행함.
 2. Read 도구로 {job}/report.json을 읽고 warnings와 수치를 확인함.
-3. 가사를 딴 경우에만 가사를 교정함.
+3. 가사를 딴 경우에만 받아 적은 가사를 훑음. 웹에서 가사를 찾아 옮기지 않음(저작권). 사용자가 페이지의 «가사 붙여넣어 맞추기»로 고침.
    python D:/codes/ukulele-tab/bridge/lyrics_tool.py show --job "{job}"
-   출력 맨 위의 곡 제목과 가수로 WebSearch에서 이 곡의 실제 가사를 찾음(필요하면 WebFetch로 가사 페이지를 읽음).
-   찾았으면 받아 적은 줄마다 실제 가사로 고친 줄을 {job}/lyrics_fix.txt에 "번호: 고친 가사" 형식으로 Write 도구로 씀.
-   노래가 아닌데 Whisper가 지어낸 줄은 "번호: -"로 씀. 줄을 합치거나 나누지 않음. 확신이 없는 줄은 적지 않음.
-   그다음 실행: python D:/codes/ukulele-tab/bridge/lyrics_tool.py apply --job "{job}" --file "{job}/lyrics_fix.txt"
-   실제 가사를 못 찾으면 3단계는 건너뜀.
+   노래가 아닌데 Whisper가 지어낸 줄(방송 인사, 자막 제작자 이름, 같은 말 반복)만 {job}/lyrics_fix.txt에 "번호: -"로 Write 도구로 씀.
+   그런 줄이 있으면 실행: python D:/codes/ukulele-tab/bridge/lyrics_tool.py apply --job "{job}" --file "{job}/lyrics_fix.txt"
 4. 마지막으로 실행: python D:/codes/ukulele-tab/bridge/lyrics_tool.py check --job "{job}"
-5. 세 줄 이하로 한국어 음슴체 요약을 출력함: 템포, 코드 바뀐 횟수, 가사 교정 여부, 경고.
+5. 세 줄 이하로 한국어 음슴체 요약을 출력함: 템포, 코드 바뀐 횟수, 뺀 가사 줄 수, 경고.
 """
 
 
@@ -205,7 +245,7 @@ def run_claude(j):
     base = {k: v for k, v in os.environ.items() if not (k.startswith("CLAUDE") or k == "CLAUDECODE" or k.startswith("ANTHROPIC_"))}
     base.update({"CLAUDE_SOUND_MUTE": "1", "CLAUDE_TASKCHECK_SKIP": "1", "PYTHONIOENCODING": "utf-8"})
     allowed = ["Bash(python D:/codes/ukulele-tab/bridge/transcribe.py:*)", "Bash(python D:/codes/ukulele-tab/bridge/lyrics_tool.py:*)",
-               "WebSearch", "WebFetch", "Read"]
+               "Read"]
     errors = []
     for acct in accounts_in_order():
         if current["cancel"]:
@@ -214,7 +254,7 @@ def run_claude(j):
         cmd = [str(CLAUDE_EXE), "-p", "--model", "opus", "--output-format", "stream-json", "--verbose",
                "--max-turns", "40", "--name", f"우쿨렐레 악보 {j['videoId']}",
                "--permission-mode", "acceptEdits", "--setting-sources", "project,local",
-               "--tools", "Bash,Read,Write,Edit,Glob,Grep,WebSearch,WebFetch",
+               "--tools", "Bash,Read,Write,Edit,Glob,Grep",
                "--allowedTools", *allowed]
         add_progress(jid, f"[bridge] Claude 시작 ({acct})")
         log(f"{jid} claude start {acct}")
@@ -404,6 +444,15 @@ class Handler(BaseHTTPRequestHandler):
                                        "queued": queue.qsize(), "lastFailure": fail.read_text(encoding="utf-8") if fail.exists() else None})
             if path == "/jobs":
                 return self.send(200, {"jobs": list_jobs()})
+            if path == "/library":
+                return self.send(200, {"items": library_list(), "folder": str(LIBRARY)})
+            if path.startswith("/library/"):
+                from urllib.parse import unquote
+                name = unquote(path[len("/library/"):])
+                f = LIBRARY / name
+                if not LIB_NAME.match(name) or not f.exists():
+                    return self.send(404, {"error": "없는 악보"})
+                return self.send(200, json.loads(f.read_text(encoding="utf-8")))
             m = re.fullmatch(r"/jobs/([A-Za-z0-9_-]{1,64})(/result)?", path)
             if m:
                 j = read_job(m.group(1))
@@ -422,6 +471,16 @@ class Handler(BaseHTTPRequestHandler):
             return
         path = self.path.split("?")[0].rstrip("/")
         n = int(self.headers.get("Content-Length") or 0)
+        if path == "/library":
+            if n > 5_000_000:
+                return self.send(413, {"error": "악보가 너무 큼"})
+            try:
+                body = json.loads(self.rfile.read(n) or b"{}")
+                name = library_save(str(body.get("file") or ""), body.get("score") or {})
+                log(f"library saved {name}")
+                return self.send(200, {"file": name})
+            except (ValueError, OSError) as e:
+                return self.send(400, {"error": str(e)})
         if n > 10_000:
             return self.send(413, {"error": "요청이 너무 큼"})
         try:

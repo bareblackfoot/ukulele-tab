@@ -1,4 +1,4 @@
-"""Headless check of practice mode, chord practice view and fake-microphone input.
+"""Headless check of game mode (count-in, judging, result saved), chord practice and the records view.
 usage: python tests/practice_smoke.py <url> <out_dir>"""
 import os
 import sys
@@ -18,48 +18,63 @@ with sync_playwright() as p:
     pg.evaluate("localStorage.clear(); localStorage.setItem('uketab.practice.input', JSON.stringify('keys'))")
     pg.reload(wait_until="networkidle")
     pg.wait_for_timeout(500)
+    print("status line hidden at start:", pg.locator(".status").is_hidden())
 
-    # 1. practice mode with keyboard input: press J on every beat for a few bars
+    # 1. game mode: count-in, then press J on every beat for a few bars
     pg.locator("[data-act=practice]").click()
-    pg.wait_for_timeout(400)
-    print("state:", pg.locator(".g-state").inner_text())
-    pg.locator("[data-act=play]").click()
-    beat_ms = 60000 / 96
-    for i in range(10):
-        pg.wait_for_timeout(int(beat_ms))
-        pg.keyboard.press("j")
     pg.wait_for_timeout(300)
-    counts = {el.get_attribute("data-c"): el.inner_text() for el in pg.locator(".g-counts [data-c]").all()}
-    print("counts after 10 key strums:", counts)
-    pg.screenshot(path=os.path.join(out, "p1_practice.png"))
+    print("button:", pg.locator("[data-act=practice]").inner_text(), "| state:", pg.locator(".g-state").inner_text())
+    import time
     pg.locator("[data-act=play]").click()
+    t_click = time.monotonic()
+    beat = 60 / 96
+    shown = set()
+    while time.monotonic() - t_click < 0.6 + 3.5 * beat:
+        if not pg.locator(".countdown").is_hidden():
+            shown.add(pg.locator(".countdown").inner_text())
+        time.sleep(0.05)
+    print("count-in shown:", sorted(shown))
+    start = t_click + 0.6 + 4 * beat + 0.03  # first beat of the song
+    for i in range(12):
+        while time.monotonic() < start + i * beat:
+            time.sleep(0.002)
+        pg.keyboard.press("j")
+    time.sleep(0.4)
+    counts = {el.get_attribute("data-c"): el.inner_text() for el in pg.locator(".g-counts [data-c]").all()}
+    print("counts after 12 key strums:", counts)
+    pg.screenshot(path=os.path.join(out, "g1_game.png"))
+    pg.locator("[data-act=practice]").click()  # turning game mode off shows the result
+    pg.wait_for_timeout(400)
+    print("result dialog:", pg.locator(".dlg-gresult[open] .gr-meta").inner_text()[:120].replace("\n", " "))
+    pg.screenshot(path=os.path.join(out, "g2_result.png"))
+    pg.locator(".dlg-gresult [value=close]").click()
 
     # 2. chord practice view
     pg.locator("[data-act=drill]").click()
     pg.wait_for_timeout(300)
-    print("drill steps:", pg.locator(".dr-step").count(), "| chord cards:", pg.locator(".dr-card").count())
-    pg.locator("[data-dr=self]").click()
-    pg.locator("[data-dr=self]").click()
-    pg.locator("[data-dr=self]").click()
+    print("transport hidden in chord practice:", pg.locator(".transport").is_hidden(), "| chord:", pg.locator(".dr-name").inner_text().split("\n")[0])
+    pg.locator("[data-dr=next]").click()
     pg.wait_for_timeout(200)
-    print("after 3 self checks:", pg.locator(".verdict").inner_text(), "| done cards:", pg.locator(".dr-card.done").count())
-    pg.screenshot(path=os.path.join(out, "p2_drill1.png"))
-    pg.locator("[data-step='2']").click()
+    print("after next:", pg.locator(".dr-name").inner_text().split("\n")[0], "| finger lines:", pg.locator(".dr-fingers li").count())
+    pg.screenshot(path=os.path.join(out, "g3_learn.png"))
+    pg.locator("[data-dr=mode-change]").click()
     pg.wait_for_timeout(200)
-    print("pairs:", pg.locator(".dr-pair").count())
-    pg.screenshot(path=os.path.join(out, "p3_drill2.png"))
-    pg.locator(".dr-pair [data-dr=pair]").first.click()
-    pg.wait_for_timeout(2500)
-    print("drill title:", pg.locator(".status").inner_text())
-    pg.screenshot(path=os.path.join(out, "p4_pairrun.png"))
-    pg.locator("[data-act=play]").click()
+    pg.locator("[data-dr=go]").click()
+    pg.wait_for_timeout(3500)
+    print("change drill tally:", pg.locator(".dr-tally").inner_text())
+    pg.screenshot(path=os.path.join(out, "g4_change.png"))
+    pg.locator("[data-dr=go]").click()
 
-    # 3. fake microphone: switch input to mic and see that samples arrive
-    pg.select_option(".g-input", "mic")
-    pg.wait_for_timeout(1500)
-    print("mic state:", pg.locator(".g-state").inner_text(), "| meter width:", pg.locator(".g-meter i").evaluate("e => e.style.width"))
+    # 3. records view
+    pg.locator("[data-act=records]").click()
+    pg.wait_for_timeout(600)
+    print("records rows:", pg.locator(".db-table tbody tr").count(), "| tiles:", pg.locator(".db-tile").count())
+    pg.locator(".db-table tbody tr").first.click()
+    pg.wait_for_timeout(300)
+    print("detail chart points:", pg.locator(".db-chart .pt").count())
+    pg.screenshot(path=os.path.join(out, "g5_records.png"))
     pg.locator("[data-act=view-sheet]").click()
     pg.wait_for_timeout(300)
-    print("back to song:", pg.locator(".sheet-head h1").inner_text())
+    print("back to sheet, transport visible:", pg.locator(".transport").is_visible())
     print("errors:", errs[:10])
     b.close()

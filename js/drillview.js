@@ -1,7 +1,9 @@
-// "코드 연습" view: step 1 (one chord at a time, checked by microphone), step 2 (change between two chords
-// against a metronome), steps 3-5 (the whole song with practice mode at rising difficulty).
+// "코드 연습" view: practise the chords of the open song without the song playing, the way beginner
+// videos go through each chord before the song starts.
+//   코드 익히기 - one chord at a time: big diagram, which finger goes where, its sound, optional microphone check
+//   코드 바꾸기 - change between two chords (or the song's chords in order) on a metronome, optional microphone check
 
-import { STEPS, PASS, songChords, songTransitions, songKey } from "./drills.js";
+import { songChords, songTransitions, songKey } from "./drills.js";
 import { diagramSVG } from "./diagram.js";
 import { chordShape, TUNINGS } from "./chords.js";
 
@@ -10,146 +12,154 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (_) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* blocked */ } },
 };
+const FINGER = ["", "검지", "중지", "약지", "새끼"];
+const STRING_NAME = ["G현(맨 아래 줄)", "C현", "E현", "A현(맨 위 줄)"];
 
 export class DrillView {
-  // deps: {engine, practice, settings, startChangeDrill(a, b, opts), startSongStep(step), status(msg, err)}
+  // deps: {engine, practice, settings, status(msg, err)}
   constructor(root, deps) {
     this.root = root;
     this.d = deps;
-    this.step = 1;
+    this.mode = "learn";       // "learn" | "change"
     this.cur = 0;
     this.hits = 0;
     this.listening = false;
-    this.raf = 0;
+    this.run = null;           // running change drill
     root.addEventListener("click", (e) => this.click(e));
+    root.addEventListener("change", (e) => this.change(e));
+    document.addEventListener("keydown", (e) => this.key(e));
   }
 
-  progress() { return store.get(songKey(this.score), { chords: {}, pairs: {}, steps: {} }); }
+  progress() { return store.get(songKey(this.score), { chords: {}, pairs: {} }); }
   saveProgress(p) { store.set(songKey(this.score), p); }
 
   setScore(score) {
-    // drills run on generated scores; the view keeps the song it was opened for
-    if (score.drill) return;
     this.score = score;
     this.chords = songChords(score);
     this.pairs = songTransitions(score);
     if (this.cur >= this.chords.length) this.cur = 0;
+    this.stopAll();
     if (!this.root.hidden) this.render();
   }
 
   show(on) {
     this.root.hidden = !on;
-    if (on) this.render(); else this.stopListening();
+    if (on) this.render(); else this.stopAll();
+  }
+
+  stopAll() {
+    this.stopListening();
+    this.stopChange();
+  }
+
+  shapeText(name) {
+    const s = this.score;
+    const sh = chordShape(name, s.tuning, s.chordShapes);
+    if (!sh) return [];
+    const lines = [];
+    if (sh.barre) lines.push(`검지(1)로 ${sh.barre.fret}프렛을 ${STRING_NAME[sh.barre.to].replace(/\(.*\)/, "")}부터 ${STRING_NAME[sh.barre.from].replace(/\(.*\)/, "")}까지 눕혀 누름`);
+    sh.frets.forEach((f, i) => {
+      if (f <= 0) return;
+      const fg = sh.fingers[i];
+      if (sh.barre && fg === 1 && f === sh.barre.fret) return;
+      lines.push(`${FINGER[fg] || ""}(${fg}) → ${STRING_NAME[i]} ${f}프렛`);
+    });
+    const open = sh.frets.map((f, i) => (f === 0 ? STRING_NAME[i].replace(/\(.*\)/, "") : null)).filter(Boolean);
+    if (open.length === 4) lines.push("아무 줄도 누르지 않음");
+    else if (open.length) lines.push(`${open.join("·")}은 누르지 않음`);
+    return lines;
   }
 
   render() {
     const s = this.score;
     if (!s) return;
-    const prog = this.progress();
     const opts = { tuning: s.tuning, custom: s.chordShapes, orient: this.d.settings.orient };
-    const stepBtns = STEPS.map((st) => {
-      let best = "";
-      if (st.id === 1) {
-        const done = this.chords.filter((c) => prog.chords[c.name]).length;
-        best = this.chords.length ? `${done}/${this.chords.length} 코드 익힘` : "";
-      } else if (st.id === 2) {
-        const n = Object.keys(prog.pairs).length;
-        best = n ? `${n}쌍 연습함` : "";
-      } else if (prog.steps[st.id] !== undefined) best = `최고 ${prog.steps[st.id]}%${prog.steps[st.id] >= PASS ? " 통과" : ""}`;
-      return `<button type="button" class="dr-step" data-step="${st.id}" aria-pressed="${st.id === this.step}">
-        <b>${st.id}. ${esc(st.title)}</b><small>${esc(st.desc.split(".")[0])}</small><span class="best">${esc(best)}</span></button>`;
-    }).join("");
-    const st = STEPS[this.step - 1];
+    const prog = this.progress();
+    const capo = s.capo ? ` · 카포 ${s.capo}` : "";
     let body = "";
     if (!this.chords.length) {
-      body = `<p class="dr-desc">이 악보에는 연습할 코드가 없음. 코드가 있는 악보를 열거나 편집에서 코드를 넣으세요.</p>`;
-    } else if (this.step === 1) {
+      this.root.innerHTML = `<div class="dr-head"><h2>코드 연습</h2></div><p class="dr-desc">이 악보에는 코드가 없음.</p>`;
+      return;
+    }
+    if (this.mode === "learn") {
       const c = this.chords[this.cur];
-      const sh = chordShape(c.name, s.tuning, s.chordShapes);
-      const fingers = sh.frets.map((f, i) => (f > 0 ? `${"GCEA"[i]}현 ${f}프렛 ${sh.fingers[i]}번 손가락` : null)).filter(Boolean);
-      body = `<p class="dr-desc">${esc(st.desc)}</p>
+      body = `
         <div class="dr-big">
-          ${diagramSVG(c.name, { ...opts, size: 150 })}
-          <div>
-            <div class="verdict" aria-live="polite">${this.listening ? "쳐 보세요" : "«듣기 시작»을 누르고 쳐 보세요"}</div>
-            <div class="hint">${fingers.length ? esc(fingers.join(" · ")) : "아무 줄도 누르지 않고 칩니다 (개방현)"}${sh.barre ? ` · 1번 손가락으로 ${sh.barre.fret}프렛을 함께 누름` : ""}</div>
-            <div class="hint">곡에서 ${c.count}번 나옴</div>
-            <div class="dots">${[0, 1, 2].map((i) => `<i class="${i < this.hits ? "on" : ""}"></i>`).join("")}</div>
+          ${diagramSVG(c.name, { ...opts, size: 180 })}
+          <div class="dr-info">
+            <div class="dr-name">${esc(c.name)}<small>${this.cur + 1} / ${this.chords.length}</small></div>
+            <ul class="dr-fingers">${this.shapeText(c.name).map((l) => `<li>${esc(l)}</li>`).join("")}</ul>
+            <div class="verdict" aria-live="polite"></div>
+            <div class="dots" title="마이크가 맞는 코드로 3번 들으면 익힘">${[0, 1, 2].map((i) => `<i class="${i < this.hits ? "on" : ""}"></i>`).join("")}</div>
             <div class="dr-row">
-              <button type="button" class="primary" data-dr="listen">${this.listening ? "듣기 멈춤" : "듣기 시작"}</button>
-              <button type="button" data-dr="hear">소리 들어 보기</button>
-              <button type="button" data-dr="self">쳤음 (마이크 없이)</button>
-              <button type="button" data-dr="prev">이전 코드</button>
-              <button type="button" data-dr="next">다음 코드</button>
+              <button type="button" data-dr="prev" title="←">◀ 이전</button>
+              <button type="button" class="primary" data-dr="hear" title="Space">소리 듣기</button>
+              <button type="button" data-dr="next" title="→">다음 ▶</button>
+              <button type="button" class="toggle" data-dr="listen" aria-pressed="${this.listening}">마이크로 확인</button>
             </div>
           </div>
-        </div>
-        <div class="dr-cards">${this.chords.map((ch, i) => `<div class="dr-card${i === this.cur ? " cur" : ""}${prog.chords[ch.name] ? " done" : ""}" data-chord="${i}">
-          ${diagramSVG(ch.name, { ...opts, size: 64 })}<small>${prog.chords[ch.name] ? "익힘" : `${ch.count}번`}</small></div>`).join("")}</div>`;
-    } else if (this.step === 2) {
-      const bpmOpts = [40, 50, 60, 70, 80, 90, 100, 110, 120];
-      body = `<p class="dr-desc">${esc(st.desc)} 연습 모드 판정을 같이 켭니다.</p>
-        <div class="dr-row"><label>한 코드에 <select data-dr="beats"><option value="4">4박</option><option value="2">2박</option><option value="1">1박</option></select></label></div>
-        <div class="dr-pairs">${this.pairs.slice(0, 12).map((p, i) => {
-          const key = [p.a, p.b].sort().join("|");
-          const rec = prog.pairs[key];
-          const startBpm = rec ? Math.min(120, rec.bpm + (rec.acc >= PASS ? 10 : 0)) : 60;
-          return `<div class="dr-pair" data-pair="${i}">
-            ${diagramSVG(p.a, { ...opts, size: 52 })}<span class="arrow">⇄</span>${diagramSVG(p.b, { ...opts, size: 52 })}
-            <span class="meta">곡에서 ${p.count}번 바뀜${rec ? ` · 지난번 ${rec.bpm} BPM ${rec.acc}%` : ""}</span>
-            <label>BPM <select data-dr="bpm">${bpmOpts.map((b) => `<option ${b === startBpm ? "selected" : ""}>${b}</option>`).join("")}</select></label>
-            <button type="button" class="primary" data-dr="pair">시작</button></div>`;
-        }).join("") || "<p class='dr-desc'>코드가 바뀌는 곳이 없음</p>"}</div>`;
+        </div>`;
     } else {
-      const best = prog.steps[st.id];
-      body = `<p class="dr-desc">${esc(st.desc)} ${PASS}% 넘으면 통과.</p>
-        <div class="dr-row"><button type="button" class="primary" data-dr="song">${st.id}단계 시작</button>
-        ${best !== undefined ? `<span>최고 ${best}%</span>` : ""}</div>
-        <p class="hint">시작하면 처음부터 재생하고 연습 모드 판정이 켜집니다. 위쪽 레인에서 동그라미가 빨간 선에 닿을 때 치세요.</p>`;
+      const seqName = "곡 순서대로";
+      const pairOpts = [`<option value="seq">${seqName} (${this.songOrder().join(" → ")})</option>`]
+        .concat(this.pairs.slice(0, 12).map((p, i) => {
+          const rec = prog.pairs[[p.a, p.b].sort().join("|")];
+          return `<option value="${i}">${esc(p.a)} ⇄ ${esc(p.b)} · 곡에서 ${p.count}번${rec ? ` · 지난번 ${rec.bpm} BPM ${rec.acc}%` : ""}</option>`;
+        })).join("");
+      const r = this.run;
+      const seq = r ? r.seq : this.currentSeq();
+      const curName = r && r.beat >= 0 ? seq[Math.floor(r.beat / r.beatsEach) % seq.length] : seq[0];
+      const nextName = r && r.beat >= 0 ? seq[(Math.floor(r.beat / r.beatsEach) + 1) % seq.length] : seq[1 % seq.length];
+      body = `
+        <div class="dr-row">
+          <label>바꿀 코드 <select data-dr="pair">${pairOpts}</select></label>
+          <label>BPM <select data-dr="bpm">${[40, 50, 60, 70, 80, 90, 100, 110, 120].map((b) => `<option ${b === this.bpm() ? "selected" : ""}>${b}</option>`).join("")}</select></label>
+          <label>한 코드에 <select data-dr="beats">${[4, 2, 1].map((b) => `<option value="${b}" ${b === this.beatsEach() ? "selected" : ""}>${b}박</option>`).join("")}</select></label>
+          <label><input type="checkbox" data-dr="sound" ${store.get("uketab.drill.sound", true) ? "checked" : ""}> 코드 소리</label>
+          <label><input type="checkbox" data-dr="mic" ${store.get("uketab.drill.mic", false) ? "checked" : ""}> 마이크로 판정</label>
+          <button type="button" class="primary" data-dr="go">${r ? "멈춤" : "시작"}</button>
+        </div>
+        <div class="dr-change">
+          <div class="dr-now">${diagramSVG(curName, { ...opts, size: 170 })}<div class="beats">${Array.from({ length: this.beatsEach() }, (_, i) => `<i data-b="${i}"></i>`).join("")}</div></div>
+          <div class="dr-next"><small>다음</small>${diagramSVG(nextName, { ...opts, size: 90 })}</div>
+          <div class="dr-tally" aria-live="polite">${this.tallyText()}</div>
+        </div>`;
     }
-    this.root.innerHTML = `<div class="dr-steps">${stepBtns}</div><div class="dr-body">${body}</div>`;
-    const beatsSel = this.root.querySelector("[data-dr=beats]");
-    if (beatsSel) beatsSel.value = String(store.get("uketab.drill.beats", 4));
+    this.root.innerHTML = `
+      <div class="dr-head"><h2>코드 연습</h2><span class="sub">${esc(s.meta.title || "")}${capo}</span></div>
+      <div class="dr-tabs" role="group">
+        <button type="button" class="toggle" data-dr="mode-learn" aria-pressed="${this.mode === "learn"}">코드 익히기</button>
+        <button type="button" class="toggle" data-dr="mode-change" aria-pressed="${this.mode === "change"}">코드 바꾸기</button>
+      </div>
+      ${body}
+      <div class="dr-cards" aria-label="이 곡의 코드">${this.chords.map((ch, i) => `<button type="button" class="dr-card${this.mode === "learn" && i === this.cur ? " cur" : ""}${prog.chords[ch.name] ? " done" : ""}" data-chord="${i}">
+        ${diagramSVG(ch.name, { ...opts, size: 60 })}<small>${prog.chords[ch.name] ? "익힘" : `곡에서 ${ch.count}번`}</small></button>`).join("")}</div>`;
   }
 
-  click(e) {
-    const stepBtn = e.target.closest("[data-step]");
-    if (stepBtn) { this.step = +stepBtn.dataset.step; this.stopListening(); this.render(); return; }
-    const card = e.target.closest("[data-chord]");
-    if (card) { this.cur = +card.dataset.chord; this.hits = 0; this.render(); return; }
-    const b = e.target.closest("[data-dr]");
-    if (!b || b.tagName === "SELECT") return;
-    const act = b.dataset.dr;
+  // ---------------------------------------------------------------- learn mode
+  hear(name) {
     const s = this.score;
-    if (act === "listen") this.listening ? this.stopListening() : this.startListening();
-    else if (act === "hear") {
-      const sh = chordShape(this.chords[this.cur].name, s.tuning, s.chordShapes);
-      const tun = (TUNINGS[s.tuning] || TUNINGS.standard).strings;
-      this.d.engine.strumMidis(sh.frets.map((f, i) => (f < 0 ? null : tun[i] + f)));
-    } else if (act === "self") this.judged(true, null);
-    else if (act === "prev") { this.cur = (this.cur - 1 + this.chords.length) % this.chords.length; this.hits = 0; this.render(); }
-    else if (act === "next") { this.cur = (this.cur + 1) % this.chords.length; this.hits = 0; this.render(); }
-    else if (act === "pair") {
-      const row = b.closest("[data-pair]");
-      const p = this.pairs[+row.dataset.pair];
-      const bpm = +row.querySelector("[data-dr=bpm]").value;
-      const beatsEach = +this.root.querySelector("[data-dr=beats]").value;
-      store.set("uketab.drill.beats", beatsEach);
-      this.d.startChangeDrill(p.a, p.b, { bpm, beatsEach, key: [p.a, p.b].sort().join("|") });
-    } else if (act === "song") this.d.startSongStep(STEPS[this.step - 1]);
+    const sh = chordShape(name, s.tuning, s.chordShapes);
+    if (!sh) return;
+    const tun = (TUNINGS[s.tuning] || TUNINGS.standard).strings;
+    this.d.engine.strumMidis(sh.frets.map((f, i) => (f < 0 ? null : tun[i] + f + (s.capo || 0))));
   }
 
-  // ---------------------------------------------------------------- step 1 listening
+  move(d) {
+    this.cur = (this.cur + d + this.chords.length) % this.chords.length;
+    this.hits = 0;
+    this.render();
+    if (store.get("uketab.drill.autoplay", true)) this.hear(this.chords[this.cur].name);
+  }
+
   async startListening() {
     const pr = this.d.practice;
-    if (pr.input !== "mic") { this.d.status("연습 모드 입력이 키보드라서 «쳤음» 버튼으로 넘어가세요"); return; }
-    const ok = await pr.ensureMic();
-    if (!ok) return;
+    pr.input = "mic";
+    if (!(await pr.ensureMic())) return;
     pr.setScore(this.score);
     pr.mic.an.takeOnsets();
     this.listening = true;
     this.pending = [];
-    this.render();
     const loop = () => {
       if (!this.listening) return;
       const an = pr.mic.an;
@@ -164,6 +174,7 @@ export class DrillView {
       this.raf = requestAnimationFrame(loop);
     };
     this.raf = requestAnimationFrame(loop);
+    this.render();
   }
 
   stopListening() {
@@ -172,41 +183,205 @@ export class DrillView {
   }
 
   judged(ok, heard) {
-    const v = this.root.querySelector(".verdict");
+    const name = this.chords[this.cur].name;
     if (ok) {
       this.hits++;
       if (this.hits >= 3) {
         const prog = this.progress();
-        prog.chords[this.chords[this.cur].name] = true;
+        prog.chords[name] = true;
         this.saveProgress(prog);
-        const name = this.chords[this.cur].name;
         this.hits = 0;
-        const nextUndone = this.chords.findIndex((c, i) => i > this.cur && !prog.chords[c.name]);
-        this.cur = nextUndone >= 0 ? nextUndone : (this.cur + 1) % this.chords.length;
+        const next = this.chords.findIndex((c, i) => i > this.cur && !prog.chords[c.name]);
+        this.cur = next >= 0 ? next : (this.cur + 1) % this.chords.length;
         this.render();
-        const v2 = this.root.querySelector(".verdict");
-        if (v2) { v2.textContent = `${name} 익힘! 다음 코드`; v2.className = "verdict good"; }
+        this.say(`${name} 익힘`, true);
         return;
       }
       this.render();
-      const v2 = this.root.querySelector(".verdict");
-      if (v2) { v2.textContent = `맞음 (${this.hits}/3)`; v2.className = "verdict good"; }
-    } else if (v) {
-      v.textContent = heard ? `다른 코드로 들림: ${heard}` : "잘 안 들림. 한 번 더";
-      v.className = "verdict badv";
+      this.say(`맞음 (${this.hits}/3)`, true);
+    } else {
+      this.say(heard ? `${heard}로 들림` : "잘 안 들림", false);
     }
   }
 
-  // called by main when a drill or song step ends with a practice result
-  recordResult(kind, key, acc, bpm) {
-    const prog = this.progress();
-    if (kind === "pair") {
-      const old = prog.pairs[key];
-      if (!old || bpm > old.bpm || (bpm === old.bpm && acc > old.acc)) prog.pairs[key] = { bpm, acc };
-    } else {
-      prog.steps[key] = Math.max(prog.steps[key] ?? 0, acc);
+  say(text, good) {
+    const v = this.root.querySelector(".verdict");
+    if (v) { v.textContent = text; v.className = `verdict ${good ? "good" : "badv"}`; }
+  }
+
+  // ---------------------------------------------------------------- change mode
+  bpm() { return store.get("uketab.drill.bpm", 60); }
+  beatsEach() { return store.get("uketab.drill.beats", 4); }
+  songOrder() {
+    // the song's chords in the order they first appear
+    return this.chords.map((c) => c.name);
+  }
+  currentSeq() {
+    const v = store.get("uketab.drill.pair", "seq");
+    if (v === "seq" || !this.pairs[+v]) return this.songOrder();
+    return [this.pairs[+v].a, this.pairs[+v].b];
+  }
+  tallyText() {
+    const r = this.run || this.lastRun;
+    if (!r) return "";
+    if (!r.useMic) return `바꾼 횟수 ${r.changes}`;
+    return `${r.changes}번 바꿈 · 맞음 ${r.right}${r.done ? ` (${r.changes ? Math.round((r.right / r.changes) * 100) : 0}%)` : ""}`;
+  }
+
+  async startChange() {
+    const eng = this.d.engine;
+    eng.ensure();
+    const useMic = store.get("uketab.drill.mic", false);
+    if (useMic) {
+      this.d.practice.input = "mic";
+      if (!(await this.d.practice.ensureMic())) return;
+      this.d.practice.setScore(this.score);
+      this.d.practice.mic.an.takeOnsets();
     }
-    this.saveProgress(prog);
-    if (!this.root.hidden) this.render();
+    const seq = this.currentSeq();
+    const beat = 60 / this.bpm();
+    const beatsEach = this.beatsEach();
+    const total = Math.max(8, beatsEach * seq.length * 2) + 4; // a bar of count-in, then at least two rounds
+    const t0 = eng.ctx.currentTime + 0.4;
+    this.run = { seq, beat, beatsEach, t0, total, next: 0, beat: -1, changes: 0, right: 0, useMic, judged: new Set(), pend: [] };
+    this.render();
+    const r = this.run;
+    const tick = () => {
+      if (this.run !== r) return;
+      const now = eng.ctx.currentTime;
+      // schedule clicks and chord sounds a little ahead
+      while (r.next < total && t0 + r.next * beat < now + 0.2) {
+        const when = t0 + r.next * beat;
+        const k = r.next - 4; // first 4 beats are the count-in
+        eng.click(when, k < 0 ? k === -4 : k % beatsEach === 0);
+        if (k >= 0 && k % beatsEach === 0 && store.get("uketab.drill.sound", true)) {
+          const name = seq[Math.floor(k / beatsEach) % seq.length];
+          const s = this.score, sh = chordShape(name, s.tuning, s.chordShapes);
+          const tun = (TUNINGS[s.tuning] || TUNINGS.standard).strings;
+          if (sh) eng.strumMidis(sh.frets.map((f, i) => (f < 0 ? null : tun[i] + f + (s.capo || 0))), when, "D", 0.12);
+        }
+        r.next++;
+      }
+      // judge strums near each change
+      if (r.useMic) {
+        const an = this.d.practice.mic.an;
+        for (const o of an.takeOnsets()) r.pend.push(o.t - this.d.practice.offsetMs / 1000);
+        r.pend = r.pend.filter((t) => {
+          if (an.lastT < t + 0.03 + 4096 / an.sr + this.d.practice.offsetMs / 1000) return true;
+          const k = Math.round((t - t0) / beat) - 4;
+          if (k < 0 || k % beatsEach !== 0 || r.judged.has(k) || Math.abs(t - (t0 + (k + 4) * beat)) > 0.25) return false;
+          r.judged.add(k);
+          const name = seq[Math.floor(k / beatsEach) % seq.length];
+          const h = this.d.practice.hearChord(t + this.d.practice.offsetMs / 1000, name);
+          if (h && !h.quiet && (h.best === name || h.bestScore - h.expectedScore <= 0.03)) r.right++;
+          return false;
+        });
+      }
+      // display
+      const b = Math.floor((now - t0) / beat) - 4;
+      if (b !== r.beat) {
+        r.beat = b;
+        if (b >= 0 && b % beatsEach === 0) r.changes = Math.floor(b / beatsEach) + 1;
+        this.updateChange();
+      }
+      if (now > t0 + total * beat + 0.3) { this.finishChange(); return; }
+      r.timer = setTimeout(tick, 25);
+    };
+    tick();
+  }
+
+  updateChange() {
+    const r = this.run;
+    if (!r) return;
+    const k = r.beat;
+    const s = this.score;
+    const opts = { tuning: s.tuning, custom: s.chordShapes, orient: this.d.settings.orient };
+    const idx = k < 0 ? 0 : Math.floor(k / r.beatsEach);
+    const cur = r.seq[idx % r.seq.length], nxt = r.seq[(idx + 1) % r.seq.length];
+    const now = this.root.querySelector(".dr-now");
+    if (!now) return;
+    if (now.dataset.name !== cur) {
+      now.dataset.name = cur;
+      now.querySelector("svg").outerHTML = diagramSVG(cur, { ...opts, size: 170 });
+      this.root.querySelector(".dr-next svg").outerHTML = diagramSVG(nxt, { ...opts, size: 90 });
+    }
+    this.root.querySelectorAll(".beats i").forEach((el, i) => {
+      el.className = k < 0 ? (i === (k + 4) % r.beatsEach ? "count" : "") : (i === k % r.beatsEach ? "on" : "");
+    });
+    const t = this.root.querySelector(".dr-tally");
+    if (t) t.textContent = k < 0 ? `준비 ${-k}` : this.tallyText();
+  }
+
+  finishChange() {
+    const r = this.run;
+    if (!r) return;
+    clearTimeout(r.timer);
+    r.done = true;
+    this.lastRun = r;
+    this.run = null;
+    if (r.useMic && r.changes) {
+      const acc = Math.round((r.right / r.changes) * 100);
+      const pairSel = store.get("uketab.drill.pair", "seq");
+      if (pairSel !== "seq" && this.pairs[+pairSel]) {
+        const p = this.pairs[+pairSel];
+        const key = [p.a, p.b].sort().join("|");
+        const prog = this.progress();
+        const old = prog.pairs[key];
+        if (!old || this.bpm() > old.bpm || (this.bpm() === old.bpm && acc > old.acc)) prog.pairs[key] = { bpm: this.bpm(), acc };
+        this.saveProgress(prog);
+      }
+      if (acc >= 80 && this.bpm() < 120) store.set("uketab.drill.bpm", this.bpm() + 10);
+    }
+    this.render();
+  }
+
+  stopChange() {
+    if (this.run) { clearTimeout(this.run.timer); this.run = null; }
+  }
+
+  // ---------------------------------------------------------------- events
+  click(e) {
+    const card = e.target.closest("[data-chord]");
+    if (card) {
+      this.mode = "learn";
+      this.stopChange();
+      this.cur = +card.dataset.chord;
+      this.hits = 0;
+      this.render();
+      this.hear(this.chords[this.cur].name);
+      return;
+    }
+    const b = e.target.closest("button[data-dr]");
+    if (!b) return;
+    const act = b.dataset.dr;
+    if (act === "mode-learn" || act === "mode-change") {
+      this.stopAll();
+      this.mode = act === "mode-learn" ? "learn" : "change";
+      this.render();
+    } else if (act === "prev") this.move(-1);
+    else if (act === "next") this.move(1);
+    else if (act === "hear") this.hear(this.chords[this.cur].name);
+    else if (act === "listen") { if (this.listening) { this.stopListening(); this.render(); } else this.startListening(); }
+    else if (act === "go") { if (this.run) { this.stopChange(); this.render(); } else this.startChange(); }
+  }
+
+  change(e) {
+    const el = e.target.closest("[data-dr]");
+    if (!el) return;
+    const k = el.dataset.dr;
+    if (k === "pair") store.set("uketab.drill.pair", el.value);
+    if (k === "bpm") store.set("uketab.drill.bpm", +el.value);
+    if (k === "beats") store.set("uketab.drill.beats", +el.value);
+    if (k === "sound") store.set("uketab.drill.sound", el.checked);
+    if (k === "mic") store.set("uketab.drill.mic", el.checked);
+    if (!this.run) this.render();
+  }
+
+  key(e) {
+    if (this.root.hidden || e.target.closest("input, select, textarea, dialog")) return;
+    if (this.mode !== "learn") return;
+    if (e.key === "ArrowRight") { e.preventDefault(); this.move(1); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); this.move(-1); }
+    else if (e.key === " ") { e.preventDefault(); e.stopImmediatePropagation(); this.hear(this.chords[this.cur].name); }
   }
 }

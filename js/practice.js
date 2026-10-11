@@ -41,6 +41,8 @@ export class Practice {
   }
 
   reset() {
+    this.bursts = [];
+    this.milestone = null;
     this.stats = { perfect: 0, ok: 0, bad: 0, miss: 0, early: 0, late: 0, combo: 0, maxCombo: 0, score: 0, accSum: 0, timeAccSum: 0, timeN: 0, n: 0 };
     this.flash = null;
   }
@@ -62,7 +64,7 @@ export class Practice {
       const tuning = (TUNINGS[s.tuning] || TUNINGS.standard).strings;
       for (const t of s.tracks) {
         if (t.hidden || t.muted) continue;
-        for (const n of t.notes) out.push({ col: n.col, kind: "note", midi: tuning[n.string] + n.fret, label: `${"GCEA"[n.string]}${n.fret}` });
+        for (const n of t.notes) out.push({ col: n.col, kind: "note", midi: tuning[n.string] + (s.capo || 0) + n.fret, label: `${"GCEA"[n.string]}${n.fret}` });
       }
     } else if (s.chords.length) {
       const pat = s.strum.pattern || "D-D-D-D-";
@@ -93,13 +95,13 @@ export class Practice {
     const tuning = (TUNINGS[s.tuning] || TUNINGS.standard).strings;
     for (const c of new Set(s.chords.map((c) => c.name))) {
       const sh = chordShape(c, s.tuning, s.chordShapes);
-      if (sh) this.templates.set(c, templateChroma(sh.frets.map((f, i) => (f < 0 ? null : tuning[i] + f)).filter((x) => x !== null)));
+      if (sh) this.templates.set(c, templateChroma(sh.frets.map((f, i) => (f < 0 ? null : tuning[i] + (s.capo || 0) + f)).filter((x) => x !== null)));
     }
     // a few common chords as well, so a wrong chord outside the song still scores lower
     for (const c of ["C", "G", "Am", "F", "D", "Em", "G7", "Dm", "A", "E7"]) {
       if (this.templates.has(c)) continue;
       const sh = chordShape(c, s.tuning);
-      if (sh) this.templates.set(c, templateChroma(sh.frets.map((f, i) => tuning[i] + f)));
+      if (sh) this.templates.set(c, templateChroma(sh.frets.map((f, i) => tuning[i] + (s.capo || 0) + f)));
     }
   }
 
@@ -257,6 +259,8 @@ export class Practice {
     st.maxCombo = Math.max(st.maxCombo, st.combo);
     st.score += Math.round(100 * ACC[grade]);
     this.flash = { grade, text: LABEL[grade], sub: tg !== "perfect" && grade !== "miss" ? (dMs < 0 ? "EARLY" : "LATE") : "", t: performance.now(), combo: st.combo };
+    this.bursts.push({ t: performance.now(), grade });
+    if (st.combo && (st.combo === 10 || st.combo === 20 || st.combo === 30 || st.combo % 50 === 0)) this.milestone = { n: st.combo, t: performance.now() };
     if (sound && sound.heard) this.ui.heard(sound.heard);
     this.ui.onMark(target.col, grade);
     this.updateCounts();
@@ -359,6 +363,18 @@ export class Practice {
       if (x > W) break;
       c.beginPath(); c.moveTo(x + 0.5, 8); c.lineTo(x + 0.5, H - 8); c.stroke();
     }
+    // bursts where targets were hit: a ring that grows and fades
+    const nowMs = performance.now();
+    this.bursts = this.bursts.filter((b) => nowMs - b.t < 400);
+    const ringColor = { perfect: "#2f9e44", ok: "#1c7ed6", bad: "#f08c00", miss: "#e03131" };
+    for (const b of this.bursts) {
+      const k = (nowMs - b.t) / 400;
+      c.globalAlpha = 1 - k;
+      c.strokeStyle = ringColor[b.grade];
+      c.lineWidth = b.grade === "perfect" ? 4 : 2;
+      c.beginPath(); c.arc(hitX, H / 2, 10 + k * 26, 0, Math.PI * 2); c.stroke();
+    }
+    c.globalAlpha = 1;
     // hit line
     c.strokeStyle = v("--cursor");
     c.lineWidth = 3;
@@ -402,9 +418,26 @@ export class Practice {
     if (el.dataset.shown !== key) {
       el.dataset.shown = key;
       el.className = `g-judge ${f.grade}`;
+      void el.offsetWidth;
+      el.classList.add("pop");
       el.innerHTML = `<b>${f.text}</b>${f.sub ? `<small>${f.sub}</small>` : ""}${f.combo > 1 ? `<i>${f.combo} COMBO</i>` : ""}`;
     }
     el.style.opacity = String(Math.max(0, 1 - age / 700));
+    // combo milestone banner
+    const big = this.ui.combo;
+    const m = this.milestone;
+    if (big) {
+      const mAge = m ? performance.now() - m.t : 1e9;
+      if (mAge < 1100) {
+        if (big.dataset.n !== String(m.n) + m.t) {
+          big.dataset.n = String(m.n) + m.t;
+          big.textContent = `콤보 ${m.n}!`;
+          big.classList.remove("show");
+          void big.offsetWidth; // restart the animation
+          big.classList.add("show");
+        }
+      } else if (big.classList.contains("show")) big.classList.remove("show");
+    }
   }
 }
 

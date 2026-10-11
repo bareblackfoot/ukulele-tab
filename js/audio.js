@@ -154,17 +154,18 @@ export class Player {
     return this.tm.colToTime(this.position());
   }
 
-  play(fromCol) {
+  // startAt: audio-clock time at which the first column sounds (default: right away)
+  play(fromCol, startAt) {
     this.engine.ensure();
     this.playing = true;
-    this.restart(fromCol ?? this.pausedCol ?? 0);
+    this.restart(fromCol ?? this.pausedCol ?? 0, startAt);
     this.emit("play");
   }
 
-  restart(col) {
+  restart(col, startAt) {
     const ctx = this.engine.ctx;
     this.silence();
-    this.startCtx = ctx.currentTime + 0.06;
+    this.startCtx = startAt ?? ctx.currentTime + 0.06;
     this.startScoreT = this.tm.colToTime(col);
     this.nextCol = Math.ceil(col - 1e-6);
     this.melodyVoices = [null, null, null, null];
@@ -244,7 +245,7 @@ export class Player {
           const dur = (this.tm.colToTime(n.col + n.len) - this.tm.colToTime(n.col)) / this.rate;
           const old = this.melodyVoices[n.string];
           if (old && old.end > when) old.stop(when);
-          this.melodyVoices[n.string] = this.engine.note(tuning[n.string] + n.fret, when, dur + 0.05, 0.55, this.engine.melodyBus);
+          this.melodyVoices[n.string] = this.engine.note(tuning[n.string] + (s.capo || 0) + n.fret, when, dur + 0.05, 0.55, this.engine.melodyBus);
         }
       }
       // chords
@@ -280,7 +281,7 @@ export class Player {
       const t = when + k * 0.012;
       const old = this.chordVoices[s];
       if (old && old.end > t) old.stop(t);
-      this.chordVoices[s] = this.engine.note(tuning[s] + sh.frets[s], t, beat * 1.8, vel * (dir === "U" ? 0.8 : 1), this.engine.chordBus);
+      this.chordVoices[s] = this.engine.note(tuning[s] + (this.score.capo || 0) + sh.frets[s], t, beat * 1.8, vel * (dir === "U" ? 0.8 : 1), this.engine.chordBus);
     });
   }
 

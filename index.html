@@ -19,10 +19,12 @@
           <button type="button" data-act="new">새 악보</button>
           <button type="button" data-act="open">JSON 열기 (우쿨렐레·SPRED)</button>
           <button type="button" data-act="save">JSON 저장</button>
-          <button type="button" data-act="examples">예제</button>
+          <button type="button" data-act="examples">예제·내 악보</button>
+          <button type="button" data-act="save-lib">내 악보함에 저장</button>
           <button type="button" data-act="print">인쇄 / PDF</button>
           <hr>
-          <button type="button" data-act="details">곡 정보·튜닝</button>
+          <button type="button" data-act="details">곡 정보·튜닝·카포</button>
+          <button type="button" data-act="lyrics">가사 붙여넣어 맞추기</button>
         </div>
       </div>
       <div class="menu">
@@ -43,9 +45,11 @@
         <button type="button" class="toggle" data-act="view-sheet" aria-pressed="true">악보</button>
         <button type="button" class="toggle" data-act="edit" aria-pressed="false">편집</button>
         <button type="button" class="toggle" data-act="drill" aria-pressed="false">코드 연습</button>
+        <button type="button" class="toggle" data-act="records" aria-pressed="false">기록</button>
       </span>
       <button type="button" data-act="help">도움말</button>
     </nav>
+    <button type="button" class="account" data-act="account">로그인</button>
     <button type="button" class="primary" data-act="transcribe">유튜브로 악보 따기</button>
   </header>
 
@@ -67,10 +71,10 @@
     <label class="ctl">음량 <input type="range" data-opt="volume" min="0" max="100" value="70"></label>
     <button type="button" class="toggle" data-act="yt" aria-pressed="false">YouTube</button>
     <button type="button" class="toggle" data-act="loop" aria-pressed="false" title="지금 보이는 마디 구간 반복: 처음 누르면 시작 마디, 두 번째 누르면 끝 마디">구간 반복</button>
-    <button type="button" class="toggle game-btn" data-act="practice" aria-pressed="false" title="마이크로 듣고 박자와 코드를 판정하는 연습 모드">연습 모드</button>
+    <button type="button" class="toggle game-btn" data-act="practice" aria-pressed="false" title="마이크로 듣고 박자와 코드를 판정하는 게임 모드">게임 모드</button>
   </section>
 
-  <section class="game" hidden aria-label="연습 모드">
+  <section class="game" hidden aria-label="게임 모드">
     <div class="g-head">
       <button type="button" data-act="g-rules">규칙</button>
       <button type="button" data-act="g-sync">싱크 <b class="g-sync-val">+80 ms</b></button>
@@ -86,14 +90,14 @@
       <span class="g-state">준비</span>
     </div>
     <div class="g-diag">마이크 <b class="g-mic">--</b> · 들린 코드/음 <b class="g-heard">--</b> · 음량 <i class="g-meter"><i></i></i></div>
-    <div class="g-lane-wrap"><canvas class="g-lane"></canvas><div class="g-judge" aria-hidden="true"></div></div>
+    <div class="g-lane-wrap"><canvas class="g-lane"></canvas><div class="g-judge" aria-hidden="true"></div><div class="g-combo" aria-hidden="true"></div></div>
     <div class="g-counts">
       <span class="perfect">Perfect <b data-c="perfect">0</b></span><span class="ok">Ok <b data-c="ok">0</b></span>
       <span class="bad">Bad <b data-c="bad">0</b></span><span class="miss">Miss <b data-c="miss">0</b></span>
       <span>콤보 <b data-c="combo">0</b></span><span>점수 <b data-c="score">0</b></span>
       <span>정확도 <b data-c="acc">0%</b></span><span>타이밍 <b data-c="tacc">0%</b></span>
     </div>
-    <p class="g-notice">마이크 판정은 연습을 돕는 기능이라 실제와 다를 수 있습니다. 스피커 소리가 마이크로 들어가면 판정이 흔들리니 이어폰을 쓰세요.</p>
+    <p class="g-notice">스피커 소리가 마이크로 들어가면 판정이 흔들림. 이어폰 권장.</p>
   </section>
 
   <div class="cb-wrap">
@@ -104,19 +108,20 @@
     <div class="sheet" tabindex="0" aria-label="코드 악보"></div>
     <div class="editor" hidden></div>
     <div class="drill" hidden></div>
+    <div class="records-view drill" hidden></div>
   </main>
 
   <aside class="yt" hidden>
     <div class="yt-head">
       <input type="text" class="yt-url" placeholder="YouTube 주소 또는 영상 ID">
-      <label>싱크 <input type="number" class="yt-offset" step="10" value="0"> ms</label>
+      <label title="영상 시각 = 악보 시각 − 값/1000. 영상이 늦게 나오면 값을 줄임">싱크 <input type="number" class="yt-offset" step="10" value="0"> ms</label>
       <label>영상 음량 <input type="range" class="yt-vol" min="0" max="100" value="80"></label>
       <button type="button" class="yt-close" aria-label="닫기">×</button>
     </div>
     <div class="yt-player"></div>
-    <p class="yt-note">싱크 값: 영상 시각 = 악보 시각 − 값/1000. 영상이 늦게 나오면 값을 줄임.</p>
   </aside>
 
+  <div class="countdown" aria-live="assertive" hidden></div>
   <footer class="status" role="status"></footer>
 </div>
 
@@ -164,6 +169,7 @@
     <label class="row">튜닝 <select name="tuning"><option value="standard">High-G (G4 C4 E4 A4)</option><option value="low-g">Low-G (G3 C4 E4 A4)</option></select></label>
     <label class="row">YouTube <input type="text" name="video" placeholder="주소 또는 영상 ID"></label>
     <label class="row">싱크 (ms) <input type="number" name="offset" step="10"></label>
+    <label class="row">카포 <input type="number" name="capo" value="0" min="0" max="12" title="소리는 그대로 두고 코드 모양만 쉬운 쪽으로 옮김"></label>
     <label class="row">조옮김 (반음) <input type="number" name="transpose" value="0" min="-11" max="11" title="코드와 멜로디를 같이 옮김. 원곡 영상과는 음이 달라짐"></label>
     <p class="hint transpose-hint"></p>
     <div class="row end"><button value="cancel">취소</button><button value="ok" class="primary">적용</button></div>
@@ -188,7 +194,7 @@
 
 <dialog class="dlg-grules">
   <form method="dialog">
-    <h2>연습 모드 판정 규칙</h2>
+    <h2>게임 모드 판정 규칙</h2>
     <table class="rules">
       <tr><th>판정</th><th>타이밍 (쉬움 / 보통 / 어려움)</th><th>코드</th><th>멜로디 음높이</th><th>점수</th></tr>
       <tr><td class="perfect">Perfect</td><td>무시 / 60 ms 안 / 35 ms 안</td><td>들린 소리에 가장 가까운 코드가 맞는 코드</td><td>50 cent 안 (어려움 30)</td><td>100</td></tr>
@@ -203,17 +209,42 @@
 
 <dialog class="dlg-gresult">
   <form method="dialog">
-    <h2>연습 결과</h2>
+    <h2>게임 결과</h2>
     <div class="gr-meta"></div>
     <div class="gr-grid"></div>
-    <div class="row end gr-btns"><button type="button" data-act="gr-retry">다시 하기</button><button type="button" class="gr-next primary" data-act="gr-next" hidden>다음 단계</button><button value="close">닫기</button></div>
+    <div class="row end gr-btns"><button type="button" data-act="gr-retry">다시 하기</button><button value="close">닫기</button></div>
+  </form>
+</dialog>
+
+<dialog class="dlg-login">
+  <form method="dialog" autocomplete="on">
+    <h2>로그인</h2>
+    <p class="hint">게임 기록을 계정에 저장해서 다른 기기에서도 봅니다. 처음이면 아이디와 PIN을 정하고 «가입».</p>
+    <label class="row">아이디 <input type="text" name="id" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="영문 소문자·숫자 3~20자"></label>
+    <label class="row">PIN <input type="password" name="pin" autocomplete="current-password" inputmode="numeric" placeholder="숫자 4~8자리"></label>
+    <p class="hint lg-msg"></p>
+    <div class="row end"><button value="cancel">취소</button><button type="button" data-act="lg-signup">가입</button><button type="button" class="primary" data-act="lg-login">로그인</button></div>
+  </form>
+</dialog>
+
+<dialog class="dlg-lyrics">
+  <form method="dialog">
+    <h2>가사 붙여넣어 맞추기</h2>
+    <p class="hint">가사를 붙여 넣으면 멜로디 음마다 한 음절씩 맞춰 넣고, 지금 가사를 바꿉니다. 한 줄은 노래 한 소절로 보고 쉬는 곳 다음에 시작하게 맞춥니다.</p>
+    <textarea name="text" rows="12" placeholder="가사를 붙여 넣으세요"></textarea>
+    <label class="row">따라갈 멜로디 <select name="track"></select></label>
+    <p class="hint ly-msg"></p>
+    <div class="row end"><button value="cancel">취소</button><button type="button" class="primary" data-act="ly-apply">맞추기</button></div>
   </form>
 </dialog>
 
 <dialog class="dlg-examples">
   <form method="dialog">
+    <h2>내 악보 <small class="hint">이 PC의 구글 드라이브 우쿨렐레 폴더</small></h2>
+    <input type="search" class="lib-filter" placeholder="제목·가수 찾기">
+    <div class="lib-list ex-list"></div>
     <h2>예제</h2>
-    <div class="ex-list"></div>
+    <div class="ex-list ex-public"></div>
     <div class="row end"><button value="close">닫기</button></div>
   </form>
 </dialog>

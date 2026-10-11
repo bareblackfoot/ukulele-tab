@@ -100,6 +100,7 @@ def main():
     ap.add_argument("--no-lyrics", action="store_true")
     ap.add_argument("--no-inst", action="store_true")
     ap.add_argument("--reuse-audio", action="store_true", help="keep audio.wav from an earlier run of this job")
+    ap.add_argument("--grid", default=None, help="beat grid JSON (stepsPerBeat, tempo, meter, columnCount, offsetMs) to use instead of beat tracking")
     args = ap.parse_args()
     if not re.fullmatch(r"[A-Za-z0-9_-]{11}", args.video):
         raise SystemExit("영상 ID 형식이 아님")
@@ -118,8 +119,11 @@ def main():
     # 1. audio and title
     ytdlp = tool("yt-dlp", [r"%USERPROFILE%\miniconda3\Scripts\yt-dlp.exe", r"%USERPROFILE%\anaconda3\Scripts\yt-dlp.exe"])
     ffmpeg = tool("ffmpeg", [r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\Gyan.FFmpeg*\ffmpeg-*\bin\ffmpeg.exe"])
+    # YouTube needs a JavaScript runtime for some videos (HTTP 403 without one); yt-dlp only looks for deno by default
+    node = shutil.which("node") or (r"C:\Program Files\nodejs\node.exe" if Path(r"C:\Program Files\nodejs\node.exe").exists() else None)
+    js = ["--js-runtimes", f"node:{node}"] if node else []
     meta = {}
-    r = run([ytdlp, "--no-playlist", "--skip-download", "--dump-json", url], timeout=120, capture=True, check=False)
+    r = run([ytdlp, *js, "--no-playlist", "--skip-download", "--dump-json", url], timeout=120, capture=True, check=False)
     if r.returncode == 0:
         try:
             d = json.loads(r.stdout.strip().splitlines()[-1])
@@ -133,8 +137,21 @@ def main():
     if not (args.reuse_audio and wav.exists()):
         for f in job.glob("dl.*"):
             f.unlink()
-        run([ytdlp, "--no-playlist", "-f", "bestaudio/best", "-o", str(job / "dl.%(ext)s"), "--ffmpeg-location", str(Path(ffmpeg).parent), url],
-            timeout=900, capture=True)
+        last_err = None
+        # some videos answer HTTP 403 to the default player client but not to the mobile web one
+        for extra in ([], ["--extractor-args", "youtube:player_client=mweb"]):
+            try:
+                run([ytdlp, *js, *extra, "--no-playlist", "-f", "bestaudio/best", "-o", str(job / "dl.%(ext)s"),
+                     "--ffmpeg-location", str(Path(ffmpeg).parent), url], timeout=900, capture=True)
+                last_err = None
+                break
+            except SystemExit as e:  # try the other format once (some videos refuse one of them with HTTP 403)
+                last_err = e
+                say("오디오 받기 실패, 다른 형식으로 다시 받음")
+                for f in job.glob("dl.*"):
+                    f.unlink()
+        if last_err:
+            raise last_err
         src = next(iter(job.glob("dl.*")), None)
         if not src:
             raise SystemExit("오디오를 못 받음")
@@ -154,6 +171,10 @@ def main():
         opts.append("--no-lyrics")
     if args.no_inst:
         opts.append("--no-inst")
+    if args.grid:
+        # use a score's own beat grid (SPRED) so chords and lyrics land on its columns
+        scp(str(Path(args.grid).resolve()), f"{HOST}:{REMOTE_DIR}/jobs/{jid}/grid.json")
+        opts += ["--grid", f"jobs/{jid}/grid.json"]
     ssh(f"cd ~/{REMOTE_DIR} && ./run.sh --job jobs/{jid} {' '.join(opts)}", timeout=3600, stream=True)
     for name in ("transcription.json", "asr.json", "report.json"):
         scp(f"{HOST}:{REMOTE_DIR}/jobs/{jid}/{name}", str(job / name), timeout=120)

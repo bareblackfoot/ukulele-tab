@@ -14,6 +14,7 @@ export function newScore({ title = "새 악보", artist = "", bpm = 100, beats =
     format: { name: FORMAT_NAME, version: FORMAT_VERSION },
     meta: { title, artist, key: "", arranger: "", comment: "", source: "" },
     tuning: "standard",
+    capo: 0,                 // chord shapes and tab frets are relative to the capo
     stepsPerBeat,
     columnCount: bars * beats * stepsPerBeat,
     tempo: [{ col: 0, bpm }],
@@ -45,6 +46,7 @@ export function normalizeScore(o) {
   const s = newScore();
   s.meta = { ...s.meta, ...(o.meta || {}) };
   s.tuning = TUNINGS[o.tuning] ? o.tuning : "standard";
+  s.capo = Math.max(0, Math.min(12, int(o.capo, 0)));
   s.stepsPerBeat = Math.max(1, Math.min(12, int(o.stepsPerBeat, 4)));
   s.tempo = (o.tempo || []).map((t) => ({ col: Math.max(0, int(t.col)), bpm: Number(t.bpm) }))
     .filter((t) => t.bpm >= 10 && t.bpm <= 400);
@@ -149,8 +151,8 @@ export function distinctChords(score) {
   return seen;
 }
 
-export function midiOf(note, tuningName) {
-  return (TUNINGS[tuningName] || TUNINGS.standard).strings[note.string] + note.fret;
+export function midiOf(note, tuningName, capo = 0) {
+  return (TUNINGS[tuningName] || TUNINGS.standard).strings[note.string] + capo + note.fret;
 }
 
 // ---------------------------------------------------------------- imports
@@ -224,7 +226,9 @@ function fromPitchData(d, opts) {
   s.sections = d.sections || [];
   const report = [];
   s.tracks = (d.melody || []).map((t, i) => {
-    const res = melodyToTab(t.notes.map((n) => ({ col: n.col, len: n.len, midi: n.midi })), s.tuning, opts.octaveShift);
+    const capo = Math.max(0, Math.min(12, int(d.capo ?? opts.capo, 0)));
+    s.capo = capo;
+    const res = melodyToTab(t.notes.map((n) => ({ col: n.col, len: n.len, midi: n.midi - capo })), s.tuning, opts.octaveShift);
     report.push({ track: t.name || t.id, shift: res.shift, folded: res.folded, notes: res.notes.length, skipped: t.skipped || 0 });
     return { id: String(t.id || `track${i}`), name: String(t.name || t.id || `트랙 ${i + 1}`), notes: res.notes };
   });

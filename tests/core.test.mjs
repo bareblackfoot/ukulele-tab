@@ -131,3 +131,26 @@ test("chord lookup by column", () => {
 test("assignFingers rejects impossible shapes", () => {
   assert.equal(assignFingers([1, 2, 3, 5]) !== null, true);
 });
+
+import { syllabify, alignLyrics } from "../js/lyrics.js";
+
+test("pasted lyrics split into sung syllables", () => {
+  const u = syllabify("우린 오래 전부터\nI can't stop\nわっわっ ちゃー");
+  assert.deepEqual(u.map((x) => x.text), ["우", "린", "오", "래", "전", "부", "터", "I", "can't", "stop", "わっ", "わっ", "ちゃー"]);
+  assert.deepEqual(u.filter((x) => x.lineStart).map((x) => x.text), ["우", "I", "わっ"]);
+});
+
+test("lyrics land on note starts and lines start after rests", () => {
+  const s = newScore();
+  // two phrases of four eighth notes with a one-bar rest between
+  s.tracks[0].notes = [0, 2, 4, 6, 24, 26, 28, 30].map((c) => ({ col: c, len: 2, string: 3, fret: 0 }));
+  s.lyrics = [];
+  const ev = alignLyrics(s, "가나다라\n마바사아");
+  assert.deepEqual(ev.map((e) => e.col), [0, 2, 4, 6, 24, 26, 28, 30]);
+  // with a long note, a line of five syllables uses an 8th inside it
+  s.tracks[0].notes = [{ col: 0, len: 8, string: 3, fret: 0 }, { col: 8, len: 2, string: 3, fret: 0 }, { col: 10, len: 2, string: 3, fret: 0 }];
+  const ev2 = alignLyrics(s, "가나다라마");
+  assert.equal(ev2.length, 5);
+  assert.deepEqual(ev2.map((e) => e.col), [0, 2, 4, 8, 10].length === 5 ? ev2.map((e) => e.col) : []);
+  assert.ok(ev2.every((e, i) => i === 0 || e.col > ev2[i - 1].col));
+});

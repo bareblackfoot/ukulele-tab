@@ -51,6 +51,7 @@ export class SheetView {
         ${score.meta.key ? `<span>조 ${esc(score.meta.key)}</span>` : ""}
         <span>${Math.round(bpm * 10) / 10} BPM${score.tempo.length > 1 ? " (바뀜)" : ""}</span>
         <span>${score.meter[0].beats}/4</span>
+        ${score.capo ? `<span class="capo">카포 ${score.capo}</span>` : ""}
         <span>${tuning === "low-g" ? "Low-G" : "High-G"}</span>
         ${pat ? `<span title="스트럼 패턴 (8분음표 단위, ↓ 다운 ↑ 업 · 쉼)">${esc(pat)}</span>` : ""}
       </div>

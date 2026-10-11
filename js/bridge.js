@@ -39,4 +39,7 @@ export const bridge = {
   result: (id) => call(`/jobs/${encodeURIComponent(id)}/result`),
   submit: (req) => call("/jobs", { method: "POST", body: req }),
   cancel: (id) => call(`/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
+  library: () => call("/library"),
+  libraryGet: (file) => call(`/library/${encodeURIComponent(file)}`),
+  librarySave: (file, score) => call("/library", { method: "POST", body: { file, score } }),
 };
