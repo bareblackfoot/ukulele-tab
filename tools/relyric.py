@@ -67,6 +67,10 @@ def main():
     ap.add_argument("--dry", action="store_true")
     ap.add_argument("--pin", action="append", default=[],
                     help="LINE=BAR.BEAT: lyric line LINE (0-based) starts at or after this place (bar numbers as on the sheet)")
+    ap.add_argument("--pin-time", action="append", default=[],
+                    help="LINE=SECONDS: like --pin, at a time of the YouTube video")
+    ap.add_argument("--ignore-time", action="append", default=[],
+                    help="A-B: sung notes between these video times are not singing (whistling, a choir, talk)")
     a = ap.parse_args()
     sheet_path = Path(a.sheet)
     s = json.loads(sheet_path.read_text(encoding="utf-8"))
@@ -87,7 +91,8 @@ def main():
         mel = s["tracks"][0]["notes"]
         cand = [{"col": n["col"], "len": n["len"]} for n in mel]
     else:
-        sung = [n for n in sync["sung_notes"] if n[2] - n[1] >= 0.06]
+        skip = [tuple(map(float, r.split("-"))) for r in a.ignore_time]
+        sung = [n for n in sync["sung_notes"] if n[2] - n[1] >= 0.06 and not any(x <= n[1] < y for x, y in skip)]
         cand = [{"col": to_col(st), "len": max(0.5, to_col(en) - to_col(st))} for _, st, en in sung]
     # bars as the sheet numbers them (the first one is 1), for --pin
     meters = sorted(s["meter"], key=lambda m: m["col"])
@@ -105,6 +110,9 @@ def main():
         line, pos = p.split("=")
         bar, _, beat = pos.partition(".")
         pins.append((int(line), bars[int(bar) - 1] + (float(beat or 1) - 1) * spb))
+    for p in a.pin_time:
+        line, sec = p.split("=")
+        pins.append((int(line), to_col(float(sec))))
     pins.sort()
     # align part by part: lines from one pin to the next only use the notes from that place on
     lines = [l for l in text.splitlines() if l.strip()]

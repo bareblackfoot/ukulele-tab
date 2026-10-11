@@ -90,7 +90,8 @@ export function alignLyrics(score, text, trackIndex = 0) {
     let v = c.pen;
     if (anchor[i] !== null) v += Math.min(4, Math.abs(c.col - anchor[i]) / spb);
     if (u.lineStart) v += c.gap >= 2 ? -0.6 : 0.4;
-    else v += c.gap >= spb * 4 ? 1.5 : c.gap >= spb * 2 ? 0.6 : 0;
+    // inside a line a syllable does not jump over a long rest (4 bars and more): squeeze it onto the notes before
+    else v += c.gap >= spb * 16 ? 5 : c.gap >= spb * 4 ? 1.5 : c.gap >= spb * 2 ? 0.6 : 0;
     return v;
   };
   const SKIP = 0.15;
