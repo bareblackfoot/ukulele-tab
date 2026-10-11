@@ -29,7 +29,15 @@ export class SheetView {
     const W = Math.max(320, Math.min(SHEET_MAX_W, this.root.clientWidth - 24));
     const perLine = settings.barsPerLine || (W >= 760 ? 4 : W >= 540 ? 3 : 2);
     const left = 26, right = 8;
-    const barW = (W - left - right) / perLine;
+    // the bar length most bars use; a full bar of it is one slot, other bars get width by their beats
+    const lenCount = new Map();
+    for (const b of bars) lenCount.set(b.len, (lenCount.get(b.len) || 0) + 1);
+    const mainLen = [...lenCount.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    const lines = [];
+    let i0 = 0;
+    if (bars.length > 1 && bars[0].len < mainLen) i0 = 1; // pickup bar goes in front of the first line
+    for (let i = i0; i < bars.length; i += perLine) lines.push(bars.slice(i === i0 && i0 ? 0 : i, i + perLine));
+    if (!lines.length) lines.push(bars);
     const showTab = settings.showTab && score.tracks.some((t) => !t.hidden && t.notes.length);
     const staffY = 50, lyricY = staffY + 19;
     const tabTop = lyricY + 14, tabGap = 9;
@@ -50,7 +58,7 @@ export class SheetView {
       <div class="chips">
         ${score.meta.key ? `<span>조 ${esc(score.meta.key)}</span>` : ""}
         <span>${Math.round(bpm * 10) / 10} BPM${score.tempo.length > 1 ? " (바뀜)" : ""}</span>
-        <span>${score.meter[0].beats}/4</span>
+        <span>${Math.round(mainLen / score.stepsPerBeat)}/4</span>
         ${score.capo ? `<span class="capo">카포 ${score.capo}</span>` : ""}
         <span>${tuning === "low-g" ? "Low-G" : "High-G"}</span>
         ${pat ? `<span title="스트럼 패턴 (8분음표 단위, ↓ 다운 ↑ 업 · 쉼)">${esc(pat)}</span>` : ""}
@@ -60,24 +68,31 @@ export class SheetView {
     </header>`);
 
     this.geo = [];
-    const lineCount = Math.ceil(bars.length / perLine);
+    const lineCount = lines.length;
     const tracks = score.tracks.filter((t) => !t.hidden);
     let ci = 0, li = 0, ni = tracks.map(() => 0);
     for (let L = 0; L < lineCount; L++) {
-      const lb = bars.slice(L * perLine, L * perLine + perLine);
+      const lb = lines[L];
+      const units = lb.reduce((a, b) => a + b.len, 0);
+      // a line is never wider than the page; lines with fewer bars keep the normal bar width
+      const unit = (W - left - right) / Math.max(units, perLine * mainLen);
+      const xs = [];
+      let acc = left;
+      for (const b of lb) { xs.push(acc); acc += b.len * unit; }
+      const lineEnd = acc;
       let g = "";
       let under = "";   // bar highlight boxes go below the lines so the lines stay visible
-      g += `<line class="staff" x1="${left}" y1="${staffY}" x2="${left + barW * lb.length}" y2="${staffY}"/>`;
+      g += `<line class="staff" x1="${left}" y1="${staffY}" x2="${lineEnd}" y2="${staffY}"/>`;
       if (showTab) {
         for (let s = 0; s < 4; s++) {
           const y = tabTop + s * tabGap;
-          g += `<line class="tabline" x1="${left}" y1="${y}" x2="${left + barW * lb.length}" y2="${y}"/>`;
+          g += `<line class="tabline" x1="${left}" y1="${y}" x2="${lineEnd}" y2="${y}"/>`;
           g += `<text class="tablab" x="${left - 4}" y="${y + 3}" text-anchor="end">${STRING_LABEL[3 - s]}</text>`;
         }
       }
       let lyricEnd = -1e9;
       lb.forEach((bar, k) => {
-        const x0 = left + k * barW, x1 = x0 + barW;
+        const x0 = xs[k], x1 = x0 + bar.len * unit, barW = x1 - x0;
         this.geo[bar.index] = { line: L, x0, x1 };
         const xOf = (col) => x0 + 7 + ((col - bar.start) / bar.len) * (barW - 14);
         under += `<rect class="bar-hl" data-bar="${bar.index}" x="${x0}" y="${staffY - 44}" width="${barW}" height="${H - staffY + 44 - 2}"/>`;

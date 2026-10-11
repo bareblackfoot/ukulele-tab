@@ -63,7 +63,7 @@ def bars_of(t):
     return out
 
 
-def build(job, out_name, meta, strum, capo=0, explicit=None, vocab=None, sections=None, simplify=False):
+def build(job, out_name, meta, strum, capo=0, explicit=None, vocab=None, sections=None, simplify=False, am7_after_a=False):
     t = json.loads((JOBS / job / "result.json").read_text(encoding="utf-8"))
     bars = bars_of(t)
     spb = t.get("stepsPerBeat", 4)
@@ -83,6 +83,19 @@ def build(job, out_name, meta, strum, capo=0, explicit=None, vocab=None, section
                 r, q = parse(name)
                 name = SHARP[(r - capo) % 12] + ("m" if q.startswith("m") and not q.startswith("maj") else "") + ("7" if q in ("7",) else "")
             chords.append({"col": c["col"], "name": name})
+    if am7_after_a:
+        # beginner sheets play AM7 in the second bar when A lasts two bars or more
+        starts = [b[0] for b in bars]
+        extra = []
+        srt = sorted(chords, key=lambda c: c["col"])
+        for i, c in enumerate(srt):
+            if c["name"] != "A" or c["col"] not in starts:
+                continue
+            end = srt[i + 1]["col"] if i + 1 < len(srt) else t["columnCount"]
+            k = starts.index(c["col"])
+            if k + 1 < len(starts) and end >= starts[k + 1] + bars[k + 1][1]:
+                extra.append({"col": starts[k + 1], "name": "AM7"})
+        chords = chords + extra
     clean = []
     for c in sorted(chords, key=lambda c: c["col"]):
         if clean and clean[-1]["name"] == c["name"]:
@@ -142,7 +155,7 @@ build("fav-antifreeze", "Antifreeze - 검정치마",
 build("fav-0plus0", "0+0 - 한로로",
       {"title": "0+0", "artist": "한로로", "key": "A",
        "source": "원곡 녹음에서 박자·가사·멜로디·코드를 땀. 코드 이름은 하루한장 우쿨렐레 A조 코드표에 맞춤"},
-      "D-D-DUDU", vocab=["A", "AM7", "F#", "Bm7", "E7", "D", "G", "Dm", "C#m7", "Em"])
+      "D-D-DUDU", vocab=["A", "AM7", "F#", "Bm7", "E7", "D", "G", "Dm", "C#m7", "Em"], am7_after_a=True)
 
 # ---------------------------------------------------------------- 사랑하게 될 거야 (한로로): 하루한장 G조 코드표로
 build("fav-landing", "사랑하게 될 거야 - 한로로",
