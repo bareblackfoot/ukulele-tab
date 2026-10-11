@@ -113,12 +113,19 @@ function setScore(s, { keepHistory = false, msg } = {}) {
   autosave();
 }
 
+// where the open score came from, so a later visit opens the newest version of an example or my-library sheet
+// instead of this browser's old copy (unless it was edited here)
+const SRC = "uketab.lastSource";
+function rememberSource(kind, file) { store.set(SRC, kind ? { kind, file, edited: false } : null); }
+
 function mutate(fn, label = "편집") {
   const before = JSON.stringify(score);
   const draft = JSON.parse(before);
   fn(draft);
   const next = normalizeScore(draft);
   if (JSON.stringify(next) === JSON.stringify(normalizeScore(JSON.parse(before)))) return;
+  const src = store.get(SRC, null);
+  if (src && !src.edited) store.set(SRC, { ...src, edited: true });
   undoStack.push(before);
   if (undoStack.length > 200) undoStack.shift();
   redoStack = [];
@@ -374,6 +381,8 @@ const actions = {
   new: () => {
     if (!confirm("지금 악보를 닫고 새 악보를 만들까? (저장 안 한 내용은 브라우저에 남은 마지막 판만 있음)")) return;
     setScore(newScore());
+    rememberSource(null);
+    libraryFile = null;
     setEditing(true);
   },
   open: () => $(".file-input").click(),
@@ -636,6 +645,7 @@ function askImportOptions(defTuning = "standard") {
 }
 
 async function openObject(obj, sourceName, opts) {
+  rememberSource(null);
   const fname = obj && obj.format && (obj.format.name || obj.format.formatName);
   if ((fname === "spred-sheet" || fname === "ukulele-transcription") && !opts) {
     opts = await askImportOptions(obj.tuning || "standard");
@@ -701,6 +711,7 @@ async function openExamples() {
             const obj = await bridge.libraryGet(it.file, sess.session);
             setScore(loadAnyFormat(obj));
             libraryFile = it.file;
+            rememberSource("library", it.file);
             seek(0);
           } catch (err) { status(`악보를 못 엶: ${err.message}`, true); }
         });
@@ -900,6 +911,7 @@ async function loadExample(file) {
   const obj = await (await fetch(`examples/${file}`)).json();
   setScore(loadAnyFormat(obj));
   libraryFile = null;
+  rememberSource("example", file);
   seek(0);
 }
 
@@ -1116,7 +1128,18 @@ window.addEventListener("resize", () => { if (!editing) { sheet.render(score, se
     if (params.get("job")) { await loadJob(params.get("job")); return; }
     if (params.get("example")) { await loadExample(params.get("example") + ".json"); return; }
     const last = store.get("uketab.last", null);
-    if (last) { setScore(loadAnyFormat(last)); return; }
+    const src = store.get(SRC, null);
+    if (src && !src.edited && src.kind === "example") { await loadExample(src.file); return; }
+    if (last) setScore(loadAnyFormat(last));
+    if (src && !src.edited && src.kind === "library") {
+      // my library may have a newer version than the copy kept in this browser
+      libraryFile = src.file;
+      const sess = records.session();
+      if (sess && await autoPair()) {
+        try { setScore(loadAnyFormat(await bridge.libraryGet(src.file, sess.session))); } catch (_) { /* keep the copy */ }
+      }
+    }
+    if (last || src) return;
     await loadExample("twinkle.json");
   } catch (err) {
     setScore(newScore());
