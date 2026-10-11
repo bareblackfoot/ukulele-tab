@@ -34,6 +34,7 @@ export class Practice {
     this.target = store.get(skey("practice.target"), "beat");
     this.input = store.get(skey("practice.input"), "mic");
     this.offsetMs = store.get(skey("practice.offset"), 80);
+    this.deviceId = store.get(skey("practice.device"), ""); // "" = the device's default input
     this.mic = null;
     this.targets = [];
     this.pending = [];
@@ -130,7 +131,16 @@ export class Practice {
       const ctx = this.engine.ctx;
       try {
         this.engine.setRecording(true);
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+        // raw sound: no echo cancelling, noise removal or level control (a guitar through an audio interface stays as it is)
+        const raw = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: this.deviceId ? { ...raw, deviceId: { exact: this.deviceId } } : raw });
+        } catch (err) {
+          // the chosen device was unplugged: use the default input
+          if (!this.deviceId || (err.name !== "OverconstrainedError" && err.name !== "NotFoundError")) throw err;
+          stream = await navigator.mediaDevices.getUserMedia({ audio: raw });
+        }
         await ctx.audioWorklet.addModule(new URL("./mic-worklet.js", import.meta.url));
         const src = ctx.createMediaStreamSource(stream);
         const node = new AudioWorkletNode(ctx, "uke-tap");
@@ -167,6 +177,27 @@ export class Practice {
   stop() {
     this.on = false;
     this.pending = [];
+  }
+
+  // sound inputs of this device: [{id, label}] (names show after the microphone was allowed once)
+  async inputDevices() {
+    try {
+      const all = await navigator.mediaDevices.enumerateDevices();
+      return all.filter((d) => d.kind === "audioinput" && d.deviceId && d.deviceId !== "default" && d.deviceId !== "communications")
+        .map((d, i) => ({ id: d.deviceId, label: d.label || `입력 장치 ${i + 1}` }));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // use another input; an open microphone is opened again on it
+  async setDevice(id) {
+    this.deviceId = id || "";
+    store.set(skey("practice.device"), this.deviceId);
+    if (this.mic) {
+      this.closeMic();
+      await this.ensureMic();
+    }
   }
 
   closeMic() {

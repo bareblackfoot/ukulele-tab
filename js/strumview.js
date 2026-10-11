@@ -9,7 +9,7 @@ import { StrumGame, showStrumResult, ClickBleed } from "./strumgame.js";
 import { CLICK_HZ } from "./audio.js";
 import { songChords } from "./drills.js";
 import { diagramSVG } from "./diagram.js";
-import { chordShape } from "./chords.js";
+import { chordShape, powerChord } from "./chords.js";
 import { INST, tuningOf, instOf, skey } from "./instrument.js";
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -57,7 +57,11 @@ export class StrumView {
   bests() { return store.get(skey("strum.best"), {}); }
 
   progressions() {
-    const list = PROGRESSIONS.slice();
+    // electric guitar mode with power chords: the preset progressions as power chords too
+    const power = this.d.settings && this.d.settings.electric && this.d.settings.power && INST.id === "guitar";
+    const list = power
+      ? PROGRESSIONS.map((p) => { const chords = p.chords.map(powerChord); return { ...p, chords, label: chords.join(" → ") }; })
+      : PROGRESSIONS.slice();
     const s = this.score;
     if (s) {
       const names = songChords(s).map((c) => c.name).slice(0, 8);

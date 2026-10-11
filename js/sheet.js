@@ -64,6 +64,7 @@ export class SheetView {
         <span>${Math.round(bpm * 10) / 10} BPM${score.tempo.length > 1 ? " (바뀜)" : ""}</span>
         <span>${Math.round(mainLen / score.stepsPerBeat)}/4</span>
         ${score.capo ? `<span class="capo">카포 ${score.capo}</span>` : ""}
+        ${score.electric ? `<span title="${score.electric.fromCapo ? `통기타판은 카포 ${score.electric.fromCapo}` : "통기타판도 카포 없음"}">일렉기타${score.electric.power ? " · 파워코드" : ""}</span>` : ""}
         <span>${esc(tuningOf(tuning).short)}</span>
         ${pat ? `<span title="스트럼 패턴 (8분음표 단위, ↓ 다운 ↑ 업 · 쉼)">${esc(pat)}</span>` : ""}
       </div>

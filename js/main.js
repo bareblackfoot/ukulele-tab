@@ -1,5 +1,5 @@
 import { newScore, loadAnyFormat, normalizeScore, toJSON, TimeMap, computeBars, barAt, retune } from "./model.js";
-import { transposeChord, TUNINGS, capoChoices } from "./chords.js";
+import { transposeChord, TUNINGS, capoChoices, powerChord } from "./chords.js";
 import { INST, INSTRUMENTS, tuningsOf, skey } from "./instrument.js";
 import { SheetView } from "./sheet.js";
 import { ChordBar } from "./chordbar.js";
@@ -25,10 +25,12 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* storage blocked */ } },
 };
 
-const DEFAULT_SETTINGS = { miniDiagrams: true, showTab: false, follow: true, orient: "h", upcoming: 4, barsPerLine: 0 };
+const DEFAULT_SETTINGS = { miniDiagrams: true, showTab: false, follow: true, orient: "h", upcoming: 4, barsPerLine: 0,
+  electric: false, power: false, drive: "clean" }; // the last three: electric guitar mode (guitar site only)
 const settings = { ...DEFAULT_SETTINGS, ...store.get(skey("settings"), {}) };
 
 let score = newScore();
+let shown = score;   // what the sheet, sound and practice use: the score itself, or its electric guitar view
 let undoStack = [], redoStack = [];
 let editing = false;
 let view = "sheet";       // "sheet" | "edit" | "drill"
@@ -92,15 +94,54 @@ const strumView = new StrumView($(".strum-view"), { engine, practice, settings, 
 
 // ---------------------------------------------------------------- score lifecycle
 
+// ---------------------------------------------------------------- electric guitar mode (guitar site)
+
+const electricOn = () => INST.id === "guitar" && !!settings.electric;
+
+// The open sheet as an electric guitar player reads it: no capo (the original key, barre shapes where needed),
+// power chords when chosen. The sheet itself (and what is saved) keeps its capo; the editor shows the sheet.
+function electricView(src) {
+  const s = JSON.parse(toJSON(src));
+  const fromCapo = s.capo || 0;
+  if (fromCapo) retune(s, s.tuning, 0, 0, 0);
+  s.meta.key = (s.meta.key || "").replace(/\s*\(.*\)\s*$/, "");
+  if (settings.power) s.chords = s.chords.map((c) => ({ ...c, name: c.name === "N.C." ? c.name : powerChord(c.name) }));
+  const out = normalizeScore(s);
+  out.electric = { fromCapo, power: !!settings.power };
+  return out;
+}
+
+// hand the sheet (or its electric view) to everything that shows or plays it
+function showScore() {
+  shown = electricOn() ? electricView(score) : score;
+  engine.setTone(electricOn() ? settings.drive : "acoustic");
+  player.setScore(shown);
+  practice.setScore(shown);
+  drillView.setScore(shown);
+  strumView.setScore(shown);
+  chordbar.setScore(shown, settings);
+  sheet.render(shown, settings);
+}
+
+function syncKind() {
+  $(".kind-switch").hidden = INST.id !== "guitar";
+  $(".electric-opts").hidden = !electricOn();
+  $("[data-act=kind-acoustic]").setAttribute("aria-pressed", String(!electricOn()));
+  $("[data-act=kind-electric]").setAttribute("aria-pressed", String(electricOn()));
+}
+
+function setKind(electric) {
+  settings.electric = electric;
+  store.set(skey("settings"), settings);
+  syncKind();
+  showScore();
+  updatePosition(player.position());
+}
+
 function setScore(s, { keepHistory = false, msg } = {}) {
   score = s;
   if (!keepHistory) { undoStack = []; redoStack = []; }
-  player.setScore(score);
-  practice.setScore(score);
-  drillView.setScore(score);
-  strumView.setScore(score);
-  chordbar.setScore(score, settings);
-  sheet.render(score, settings);
+  showScore();
   editor.setScore(score);
   editor.setHistoryButtons(undoStack.length > 0, redoStack.length > 0);
   yt.offsetMs = score.youtube.offsetMs || 0;
@@ -360,8 +401,11 @@ for (const el of $$("[data-set]")) {
   el.addEventListener("change", () => {
     settings[k] = el.type === "checkbox" ? el.checked : (isNaN(+el.value) ? el.value : +el.value);
     store.set(skey("settings"), settings);
-    chordbar.setScore(score, settings);
-    sheet.render(score, settings);
+    if (k === "power" || k === "drive") showScore();
+    else {
+      chordbar.setScore(shown, settings);
+      sheet.render(shown, settings);
+    }
     updatePosition(player.position());
   });
 }
@@ -428,6 +472,8 @@ const actions = {
   help: () => window.open("help.html", "_blank", "noopener"),
   // the ukulele site and the guitar site sit next to each other on GitHub Pages
   "other-site": () => { location.href = INST.id === "guitar" ? "../ukulele-tab/" : "../guitar-tab/"; },
+  "kind-acoustic": () => setKind(false),
+  "kind-electric": () => setKind(true),
   transcribe: () => openTranscribe(),
   loop: () => toggleLoop(),
 };
@@ -463,8 +509,11 @@ function setView(v) {
   drillView.show(v === "drill");
   $("[data-act=strum]").setAttribute("aria-pressed", String(v === "strum"));
   strumView.show(v === "strum");
-  if (v === "edit") { editor.layout(); editor.setPlayhead(player.position(), false); $(".ed-scroll").focus(); }
-  if (v === "sheet") sheet.render(score, settings);
+  if (v === "edit") {
+    editor.layout(); editor.setPlayhead(player.position(), false); $(".ed-scroll").focus();
+    if (shown !== score && (score.capo || settings.power)) status(`편집 화면은 저장되는 통기타판 코드${score.capo ? `(카포 ${score.capo})` : ""}로 보임`);
+  }
+  if (v === "sheet") sheet.render(shown, settings);
   updatePosition(player.position());
 }
 
@@ -633,6 +682,20 @@ document.addEventListener("keydown", (e) => {
 // ---------------------------------------------------------------- files
 
 $("[data-act=other-site]").textContent = INST.id === "guitar" ? "우쿨렐레 악보 사이트로" : "기타 악보 사이트로";
+
+syncKind();
+
+// sound input for the microphone checks (an audio interface with a guitar plugged in, a USB microphone ...)
+const devSel = $(".input-dev");
+async function fillDevices() {
+  const list = await practice.inputDevices();
+  devSel.replaceChildren(new Option("기본 입력", ""), ...list.map((d) => new Option(d.label, d.id)));
+  devSel.value = list.some((d) => d.id === practice.deviceId) ? practice.deviceId : "";
+}
+devSel.addEventListener("pointerdown", fillDevices);
+devSel.addEventListener("focus", fillDevices);
+devSel.addEventListener("change", () => practice.setDevice(devSel.value).then(fillDevices));
+fillDevices();
 
 // tuning choices of this site's instrument in every tuning menu
 for (const sel of $$("select[name=tuning]")) sel.innerHTML = tuningsOf(INST.id).map((t) => `<option value="${t.name}">${t.label}</option>`).join("");
@@ -826,7 +889,7 @@ function openStrumPicker(focusBar = -1) {
   const box = dlg.querySelector(".st-bars");
   box.innerHTML = "";
   bars.forEach((bar, i) => {
-    const names = score.chords.filter((c) => c.col >= bar.start && c.col < bar.start + bar.len).map((c) => c.name);
+    const names = shown.chords.filter((c) => c.col >= bar.start && c.col < bar.start + bar.len).map((c) => c.name);
     const cell = document.createElement("div");
     cell.className = "st-bar" + (i === focusBar ? " focus" : "");
     cell.dataset.bar = i;
@@ -1109,7 +1172,7 @@ brDlg.addEventListener("close", () => {
 syncAccount();
 records.flush().catch(() => {});
 
-window.addEventListener("resize", () => { if (!editing) { sheet.render(score, settings); updatePosition(player.position()); } });
+window.addEventListener("resize", () => { if (!editing) { sheet.render(shown, settings); updatePosition(player.position()); } });
 
 (async function start() {
   const params = new URLSearchParams(location.search);

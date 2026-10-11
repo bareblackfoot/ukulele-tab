@@ -30,10 +30,28 @@ function silentLoop() {
 // metronome click tones (the strum practice microphone check leaves these bands out)
 export const CLICK_HZ = [1175, 1760];
 
+// Instrument sound: "acoustic" (this site's instrument as it is), or an electric guitar through an amp:
+// "clean", or "drive" (overdrive: the signal is pushed into a soft clipping curve, then a speaker-like filter).
+//   amp: gain into the clipping, curve steepness (0 = none), high-pass and low-pass of the speaker, output gain
+//   (output gains set so a strummed chord has about the same loudness in all three, tests: offline render)
+const AMP = {
+  acoustic: { pre: 1, k: 0, hp: 20, lp: 20000, post: 1 },
+  clean: { pre: 1, k: 0, hp: 70, lp: 5200, post: 1.3 },
+  drive: { pre: 7, k: 2.6, hp: 110, lp: 3600, post: 0.09 },
+};
+export const TONE_NAMES = { clean: "깨끗한 소리", drive: "overdrive" };
+
+function clipCurve(k) {
+  const n = 2048, c = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; c[i] = Math.tanh(k * x) / Math.tanh(k); }
+  return c;
+}
+
 export class Engine {
   constructor() {
     this.ctx = null;
     this.cache = new Map();
+    this.tone = "acoustic";
   }
   ensure() {
     if (!this.ctx) {
@@ -45,9 +63,17 @@ export class Engine {
       this.melodyBus = this.ctx.createGain();
       this.chordBus = this.ctx.createGain();
       this.clickBus = this.ctx.createGain();
-      this.melodyBus.connect(this.master);
-      this.chordBus.connect(this.master);
+      // chords and melody go through the amp stage; the metronome does not
+      const c = this.ctx;
+      this.amp = { pre: c.createGain(), shaper: c.createWaveShaper(), hp: c.createBiquadFilter(), lp: c.createBiquadFilter(), post: c.createGain() };
+      this.amp.shaper.oversample = "4x";
+      this.amp.hp.type = "highpass";
+      this.amp.lp.type = "lowpass";
+      this.amp.pre.connect(this.amp.shaper).connect(this.amp.hp).connect(this.amp.lp).connect(this.amp.post).connect(this.master);
+      this.melodyBus.connect(this.amp.pre);
+      this.chordBus.connect(this.amp.pre);
       this.clickBus.connect(this.master);
+      this.applyTone();
     }
     // iOS also leaves it "interrupted" after another app or a call took the sound
     if (this.ctx.state === "suspended" || this.ctx.state === "interrupted") this.ctx.resume().catch(() => {});
@@ -75,22 +101,43 @@ export class Engine {
     setSession(on ? "play-and-record" : "playback");
   }
   setVolume(v) { this.ensure(); this.master.gain.value = v; }
+
+  setTone(tone) {
+    this.tone = AMP[tone] ? tone : "acoustic";
+    if (this.ctx) this.applyTone();
+  }
+  applyTone() {
+    const a = AMP[this.tone], t = this.ctx.currentTime;
+    this.amp.pre.gain.setValueAtTime(a.pre, t);
+    this.amp.shaper.curve = a.k ? clipCurve(a.k) : null;
+    this.amp.hp.frequency.setValueAtTime(a.hp, t);
+    this.amp.lp.frequency.setValueAtTime(a.lp, t);
+    this.amp.post.gain.setValueAtTime(a.post, t);
+  }
   setBus(name, v) { this.ensure(); this[name].gain.value = v; }
 
   pluck(midi) {
-    if (this.cache.has(midi)) return this.cache.get(midi);
+    const electric = this.tone !== "acoustic";
+    const key = `${electric ? "e" : "a"}${midi}`;
+    if (this.cache.has(key)) return this.cache.get(key);
     const ctx = this.ctx, sr = ctx.sampleRate;
     const f = 440 * 2 ** ((midi - 69) / 12);
     const N = Math.max(2, Math.round(sr / f));
-    const len = Math.floor(sr * 2.4);
+    const len = Math.floor(sr * (electric ? 3.2 : 2.4));
     const buf = ctx.createBuffer(1, len, sr);
     const out = buf.getChannelData(0);
     const ring = new Float32Array(N);
     // soft noise burst: smoothed so the attack is warm like a nylon string; a steel string keeps more of it
-    const smooth = INST.nylon ? 0.6 : 0.3;
+    // an electric string is plucked with a pick near the bridge pickup: bright, and it rings longer
+    const smooth = electric ? 0.12 : INST.nylon ? 0.6 : 0.3;
     let prev = 0;
     for (let i = 0; i < N; i++) { const r = Math.random() * 2 - 1; prev = smooth * prev + (1 - smooth) * r; ring[i] = prev; }
-    const decay = Math.min(INST.nylon ? 0.9985 : 0.999, (INST.nylon ? 0.9965 : 0.9972) + (60 - Math.min(midi, 90)) * 0.00004);
+    if (electric) {
+      const d = Math.max(1, Math.round(N * 0.18)), src = ring.slice();
+      for (let i = 0; i < N; i++) ring[i] = src[i] - 0.7 * src[(i + d) % N];
+    }
+    const decay = electric ? Math.min(0.9995, 0.9984 + (60 - Math.min(midi, 90)) * 0.00002)
+      : Math.min(INST.nylon ? 0.9985 : 0.999, (INST.nylon ? 0.9965 : 0.9972) + (60 - Math.min(midi, 90)) * 0.00004);
     let idx = 0;
     for (let i = 0; i < len; i++) {
       const a = ring[idx], b = ring[(idx + 1) % N];
@@ -102,7 +149,7 @@ export class Engine {
     for (let i = 0; i < Math.min(len, N * 8); i++) peak = Math.max(peak, Math.abs(out[i]));
     const k = peak > 0 ? 0.6 / peak : 1;
     for (let i = 0; i < len; i++) out[i] *= k;
-    this.cache.set(midi, buf);
+    this.cache.set(key, buf);
     return buf;
   }
 

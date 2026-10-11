@@ -29,6 +29,7 @@ export const QUALITIES = {
   add9: { iv: [0, 2, 4, 7], essential: [0, 2, 4] },
   "9": { iv: [0, 2, 4, 10], essential: [0, 2, 4, 10] },
   mmaj7: { iv: [0, 3, 7, 11], essential: [0, 3, 11] },
+  "5": { iv: [0, 7], essential: [0, 7] }, // power chord: root and fifth, no third
 };
 
 const QUALITY_ALIASES = {
@@ -48,6 +49,7 @@ const QUALITY_ALIASES = {
   add9: "add9", add2: "add9",
   "9": "9",
   mmaj7: "mmaj7", mM7: "mmaj7", "m(maj7)": "mmaj7",
+  "5": "5",
 };
 
 // Standard beginner shapes (G C E A), by root C, C#, D, ... B. Checked against chord tones by tests/core.test.mjs.
@@ -79,6 +81,8 @@ const GUITAR_SHAPES = {
   "7sus4": [null, null, "xx0213", null, "020200", null, null, "330011", null, "x02030", null, null],
   aug: ["x32110", null, null, null, null, null, null, null, null, null, null, null],
   add9: ["x32030", null, null, null, "024100", null, null, "320203", null, "x02420", null, null],
+  // power chords: root on the low E or A string, D5 open on the D string
+  "5": ["x355xx", "x466xx", "xx023x", "x688xx", "022xxx", "133xxx", "244xxx", "355xxx", "466xxx", "x022xx", "x133xx", "x244xx"],
 };
 
 export function normalizeAccidental(s) {
@@ -108,6 +112,12 @@ export function parseChord(name) {
 export function chordName(root, quality, useFlats = false, bass = null) {
   const names = useFlats ? NOTE_NAMES_FLAT : NOTE_NAMES_SHARP;
   return names[(root + 120) % 12] + quality + (bass === null ? "" : "/" + names[(bass + 120) % 12]);
+}
+
+// the power chord on the same root ("Am7" -> "A5"); N.C. and unknown names stay
+export function powerChord(name) {
+  const c = parseChord(name);
+  return c ? `${c.rootName}5` : name;
 }
 
 export function transposeChord(name, semis) {
@@ -145,7 +155,8 @@ function generateShape(root, quality, tuning, bass = null) {
 }
 
 // Guitar: the lowest sounding note is the root (or the slash bass); strings left out only at the low end
-// (x32010) and at most the top string; at least 4 strings sound; one hand (a barre counts as one finger).
+// (x32010) and at most the top string; at least 4 strings sound (3 for a power chord); one hand (a barre counts
+// as one finger).
 function generateGuitar(root, quality, tuning, bass) {
   const q = QUALITIES[quality];
   const tones = new Set(q.iv.map((x) => (root + x) % 12));
@@ -164,7 +175,8 @@ function generateGuitar(root, quality, tuning, bass) {
       if (i < n) { for (const f of opts[i]) { frets[i] = f; walk(i + 1); } return; }
       let a = 0; while (a < n && frets[a] < 0) a++;
       let b = n - 1; while (b > a && frets[b] < 0) b--;
-      if (n - b - 1 > 1 || b - a + 1 < 4) return;
+      // a power chord may leave out all the top strings (222xxx in Drop D)
+      if ((q.iv.length > 2 && n - b - 1 > 1) || b - a + 1 < Math.min(4, q.iv.length + 1)) return;
       for (let k = a; k <= b; k++) if (frets[k] < 0) return;
       if (lowestPc(frets, tuning) !== low) return;
       if (!shapeFitsChord(frets, root, quality, tuning, bass)) return;
