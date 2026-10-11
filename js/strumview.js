@@ -5,7 +5,8 @@
 // 게임 모드 (strumgame.js): a fixed number of bars at a fixed tempo, every strum judged, then a result card.
 
 import { STRUMS, ARROW, countLabels, slotBeat, PROGRESSIONS } from "./strums.js";
-import { StrumGame, showStrumResult } from "./strumgame.js";
+import { StrumGame, showStrumResult, ClickBleed } from "./strumgame.js";
+import { CLICK_HZ } from "./audio.js";
 import { songChords } from "./drills.js";
 import { diagramSVG } from "./diagram.js";
 import { chordShape, TUNINGS } from "./chords.js";
@@ -18,6 +19,7 @@ const store = {
 const ROUND = 4;          // bars per round: speed-up and the microphone score go by rounds
 const HIT = 0.1;          // seconds: a strum this close to a slot counts as on time
 const MIN_BPM = 40, MAX_BPM = 200;
+const MIC_HINT = "마이크는 친 시각만 판정함(다운·업 구분 못 함). 스트럼 소리는 스피커로 나오면 친 소리와 섞이므로 이어폰을 쓸 때만 켬.";
 
 export class StrumView {
   // deps: {engine, practice, settings, status(msg, err)}
@@ -105,21 +107,25 @@ export class StrumView {
     const mic = this.opt("mic", false);
     const game = this.opt("game", false);
     const gin = this.opt("ginput", "mic"), gmode = this.opt("gmode", "std"), gbars = this.opt("gbars", 8);
+    const micOn = game ? gin === "mic" : mic;
+    const soundBox = micOn
+      ? `<label><input type="checkbox" data-sv="soundMic" ${this.opt("soundMic", false) ? "checked" : ""}> 스트럼 소리 (이어폰 쓸 때)</label>`
+      : `<label><input type="checkbox" data-sv="sound" ${this.opt("sound", true) ? "checked" : ""}> 스트럼 소리</label>`;
     const opts = game ? `
-            <label><input type="checkbox" data-sv="sound" ${this.opt("sound", true) ? "checked" : ""}> 스트럼 소리</label>
+            ${soundBox}
             <label><input type="checkbox" data-sv="metro" ${this.opt("metro", true) ? "checked" : ""}> 메트로놈</label>
             <label>길이 <select data-sv="gbars" ${r ? "disabled" : ""}>${[4, 8, 16].map((n) => `<option value="${n}" ${n === gbars ? "selected" : ""}>${n}마디</option>`).join("")}</select></label>
             <span class="sv-modes" role="group" aria-label="난이도">${[["easy", "쉬움"], ["std", "보통"], ["pro", "어려움"]].map(([k, t]) =>
               `<button type="button" class="toggle" data-sv="gmode" data-v="${k}" aria-pressed="${k === gmode}" ${r ? "disabled" : ""}>${t}</button>`).join("")}</span>
             <label>입력 <select data-sv="ginput" ${r ? "disabled" : ""}><option value="mic" ${gin === "mic" ? "selected" : ""}>마이크</option><option value="keys" ${gin === "keys" ? "selected" : ""}>탭·키보드</option></select></label>` : `
-            <label><input type="checkbox" data-sv="sound" ${this.opt("sound", true) ? "checked" : ""}> 스트럼 소리</label>
+            ${soundBox}
             <label><input type="checkbox" data-sv="metro" ${this.opt("metro", true) ? "checked" : ""}> 메트로놈</label>
             <label><input type="checkbox" data-sv="faster4" ${this.opt("faster4", false) ? "checked" : ""}> 4마디마다 +5 BPM</label>
             <label><input type="checkbox" data-sv="mic" ${mic ? "checked" : ""} ${r ? "disabled" : ""}> 마이크로 박자 확인</label>`;
     const hint = game
-      ? gin === "mic" ? "마이크는 친 시각만 판정함. 다운과 업은 구분 못 함. 스트럼 소리를 끄거나 이어폰을 쓰면 판정이 정확함."
+      ? gin === "mic" ? MIC_HINT
         : "칠 때마다 아래 버튼을 누르거나 Space·F·J를 누름. 시각만 판정함."
-      : mic ? "마이크는 친 시각만 들음. 다운과 업은 구분 못 하고, 약한 업은 놓칠 수 있음. 스트럼 소리를 끄거나 이어폰을 쓰면 판정이 정확함." : "";
+      : mic ? MIC_HINT : "";
     const st = r && r.game ? r.game.stats : null;
     const counts = game ? `<div class="g-counts sv-counts">
             <span class="perfect">Perfect <b data-c="perfect">${st ? st.perfect : 0}</b></span><span class="ok">Ok <b data-c="ok">${st ? st.ok : 0}</b></span>
@@ -196,14 +202,17 @@ export class StrumView {
       this.starting = true;
       const ok = await pr.ensureMic();
       this.starting = false;
-      if (!ok) { if (game) { store.set("uketab.strum.ginput", "keys"); this.render(); } return; }
-      pr.mic.an.takeOnsets();
+      // no microphone: a game goes on with taps (practice.ensureMic says so), the timing check stops here
+      if (!ok && !game) return;
+      if (!ok) store.set("uketab.strum.ginput", "keys");
+      else { pr.mic.an.ignoreTones(CLICK_HZ); pr.mic.an.takeOnsets(); }
     }
+    const micOk = useMic && !!pr.mic;
     const p = this.pattern(), prog = this.prog();
     const beat = 60 / this.bpm();
     const t0 = eng.ctx.currentTime + 0.4;
     const r = {
-      p, prog, useMic: useMic && !game, bpm: this.bpm(), bpm0: this.bpm(),
+      p, prog, useMic: micOk && !game, bpm: this.bpm(), bpm0: this.bpm(), gate: micOk ? new ClickBleed() : null,
       bars: [], next: { bar: 0, slot: 0 }, curBar: -1, curSlot: -1,
       strokes: [], rounds: [], voices: [null, null, null, null], timers: [],
       firstBar: t0 + 4 * beat,
@@ -226,13 +235,14 @@ export class StrumView {
           }
         },
       };
-      r.game = new StrumGame({ engine: eng, practice: pr, mode: this.opt("gmode", "std"), input: useMic ? "mic" : "keys", bars: this.opt("gbars", 8), ui });
+      r.game = new StrumGame({ engine: eng, practice: pr, mode: this.opt("gmode", "std"), input: micOk ? "mic" : "keys", bars: this.opt("gbars", 8), gate: r.gate, ui });
     }
     this.run = r;
     // count-in: four clicks with 3, 2, 1, 시작!
     const cd = document.querySelector(".countdown");
     ["3", "2", "1", "시작!"].forEach((txt, k) => {
       eng.click(t0 + k * beat, k === 0);
+      if (r.gate) r.gate.add(t0 + k * beat, true);
       r.timers.push(setTimeout(() => {
         if (!cd || this.run !== r) return;
         cd.hidden = false;
@@ -280,7 +290,7 @@ export class StrumView {
 
   schedule(r, horizon) {
     const eng = this.d.engine, p = r.p;
-    const sound = this.opt("sound", true), metro = this.opt("metro", true);
+    const sound = r.gate ? this.opt("soundMic", false) : this.opt("sound", true), metro = this.opt("metro", true);
     for (let guard = 0; guard < 200; guard++) {
       if (r.game && r.next.bar >= r.game.bars) break;
       const b = this.bar(r, r.next.bar);
@@ -288,7 +298,10 @@ export class StrumView {
       const pos = slotBeat(p, i);
       const when = b.start + pos * b.beat;
       if (when > horizon) break;
-      if (metro && i % p.sub === 0) eng.click(when, i === 0);
+      if (metro && i % p.sub === 0) {
+        eng.click(when, i === 0);
+        if (r.gate) r.gate.add(when, false);
+      }
       const c = p.slots[i];
       if (c !== "-") {
         if (sound) this.stroke(r, c, b, when, i % p.sub === 0);
@@ -347,9 +360,10 @@ export class StrumView {
     const pr = this.d.practice;
     if (!pr.mic) return;
     const an = pr.mic.an;
-    const off = pr.offsetMs / 1000;
+    const stored = pr.offsetMs / 1000;
     for (const o of an.takeOnsets()) {
-      const t = o.t - off;
+      const t = r.gate.filter(o, stored);
+      if (t === null) continue;
       let best = null, bd = HIT;
       for (const s of r.strokes) {
         if (s.hit) continue;
@@ -359,7 +373,7 @@ export class StrumView {
       if (best) best.hit = true;
     }
     // strums whose window has passed are final
-    const heardUntil = an.lastT - off;
+    const heardUntil = an.lastT - r.gate.offset(stored);
     for (const s of r.strokes) {
       if (s.done || (!s.hit && heardUntil < s.t + HIT + 0.06)) continue;
       s.done = true;
@@ -447,6 +461,7 @@ export class StrumView {
     const cd = document.querySelector(".countdown");
     if (cd) { cd.hidden = true; cd.innerHTML = ""; }
     if (r.curBar >= 0) this.saveBest(r.p.id, { last: r.bpm });
+    if (r.gate && this.d.practice.mic) this.d.practice.mic.an.ignoreTones([]);
     this.lastRun = r;
     this.run = null;
   }
@@ -488,7 +503,7 @@ export class StrumView {
     if (k === "prog") store.set("uketab.strum.prog", el.value);
     if (k === "gbars") store.set("uketab.strum.gbars", +el.value);
     if (k === "ginput") store.set("uketab.strum.ginput", el.value);
-    if (k === "sound" || k === "metro" || k === "faster4" || k === "mic") store.set(`uketab.strum.${k}`, el.checked);
+    if (k === "sound" || k === "soundMic" || k === "metro" || k === "faster4" || k === "mic") store.set(`uketab.strum.${k}`, el.checked);
     if (!this.run) this.render();
   }
 

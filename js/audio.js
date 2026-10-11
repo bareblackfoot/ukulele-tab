@@ -26,6 +26,9 @@ function silentLoop() {
   el.play().catch(() => {});
 }
 
+// metronome click tones (the strum practice microphone check leaves these bands out)
+export const CLICK_HZ = [1175, 1760];
+
 export class Engine {
   constructor() {
     this.ctx = null;
@@ -134,7 +137,7 @@ export class Engine {
     const ctx = this.ctx;
     const o = ctx.createOscillator();
     const g = ctx.createGain();
-    o.frequency.value = accent ? 1760 : 1175;
+    o.frequency.value = accent ? CLICK_HZ[1] : CLICK_HZ[0];
     g.gain.setValueAtTime(0, when);
     g.gain.linearRampToValueAtTime(accent ? 0.5 : 0.32, when + 0.002);
     g.gain.exponentialRampToValueAtTime(0.001, when + 0.06);

@@ -127,11 +127,28 @@ export class MicAnalyzer {
     this.lastT = 0;          // audio-clock time of sample index total-1
     this.prevMag = null;
     this.flux = [];
-    this.onsets = [];        // {t (audio clock, uncorrected), strength}
+    this.onsets = [];        // {t (audio clock, uncorrected), strength, f (spectral flux)}
     this.lastOnsetT = -1;
     this.level = 0;
-    this.noise = 0.002;
+    this.noise = 0.002;      // level of the room when nothing is played
+    this.onsetLevel = 0;     // typical level right after a strum (running average)
+    this.skip = null;        // FFT bins left out of the onset measure (the app's own metronome tones)
     this.pending = new Float32Array(0);
+  }
+
+  // leave out narrow bands around these frequencies (and the 2nd and 3rd harmonics a small speaker adds),
+  // so the app's own metronome coming back through the microphone is not heard as a strum
+  ignoreTones(hz = []) {
+    const N = 1024;
+    const lim = Math.floor((6000 * N) / this.sr);
+    if (!hz.length) { this.skip = null; return; }
+    this.skip = new Uint8Array(lim);
+    for (const f of hz) {
+      for (const h of [1, 2, 3]) {
+        const c = Math.round((f * h * N) / this.sr);
+        for (let k = c - 6; k <= c + 6; k++) if (k >= 0 && k < lim) this.skip[k] = 1;
+      }
+    }
   }
 
   push(t, block) {
@@ -139,7 +156,13 @@ export class MicAnalyzer {
     this.total += block.length;
     this.lastT = t;
     this.level = rms(block);
-    this.noise = this.level < this.noise * 3 ? 0.98 * this.noise + 0.02 * this.level : this.noise * 1.0005;
+    // The room level falls quickly and rises slowly, and only after 0.6 s without a strum: while someone keeps
+    // strumming, the ringing strings are not the room. (It used to rise during playing too, so after a minute
+    // or so of strumming it reached the playing level and every strum was rejected.)
+    if (this.level < this.noise) this.noise = 0.9 * this.noise + 0.1 * this.level;
+    else if (t - this.lastOnsetT > 0.6) this.noise = Math.min(this.noise * 1.002, 0.99 * this.noise + 0.01 * this.level);
+    if (this.onsetLevel) this.noise = Math.min(this.noise, this.onsetLevel / 10);
+    this.noise = Math.max(this.noise, 1e-5);
     this.detect();
   }
 
@@ -165,6 +188,7 @@ export class MicAnalyzer {
     let f = 0;
     if (this.prevMag) {
       for (let k = 2; k < lim; k++) {
+        if (this.skip && this.skip[k]) continue;
         const d = Math.log1p(100 * mag[k]) - Math.log1p(100 * this.prevMag[k]);
         if (d > 0) f += d;
       }
@@ -183,7 +207,8 @@ export class MicAnalyzer {
     const thr = mean + 1.6 * sd + 4;
     if (cur.f > thr && cur.f >= prev.f && cur.f >= next.f && next.level > this.noise * 4 && cur.t - this.lastOnsetT > 0.08) {
       this.lastOnsetT = cur.t;
-      this.onsets.push({ t: cur.t - 0.012, strength: cur.f / (thr || 1) });
+      this.onsetLevel = this.onsetLevel ? 0.9 * this.onsetLevel + 0.1 * next.level : next.level;
+      this.onsets.push({ t: cur.t - 0.012, strength: cur.f / (thr || 1), f: cur.f });
     }
   }
 

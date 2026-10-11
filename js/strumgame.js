@@ -10,8 +10,57 @@ const LABEL = { perfect: "PERFECT", ok: "OK", bad: "BAD", miss: "MISS" };
 const MODE_NAME = { easy: "쉬움", std: "보통", pro: "어려움" };
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+// With a speaker, the metronome clicks come back through the microphone right on the beats and were counted
+// as strums. During the count-in the player waits, so the onsets heard right after the four count-in clicks
+// are our own clicks: from them come how late the microphone hears what the app plays (used as the 싱크 for
+// this run) and how strong a click sounds there. Later onsets right on a click that are not clearly stronger
+// than that (and a quiet click heard only now and then is never as strong as a strum: below CLICK_F it is
+// dropped even when the count-in caught nothing).
+const CLICK_F = 40;
+export class ClickBleed {
+  constructor() {
+    this.clicks = [];         // {t, countIn} audio-clock times of our clicks
+    this.seen = [];           // count-in: {d: delay, f: onset strength}
+    this.latency = null;      // seconds, once learned
+    this.strength = 0;
+  }
+
+  add(t, countIn) {
+    this.clicks.push({ t, countIn });
+    if (this.clicks.length > 80) this.clicks.splice(this.clicks.findIndex((c) => !c.countIn), 1);
+  }
+
+  // onset {t: raw audio-clock time, f: strength} -> time corrected by the microphone delay, or null to drop it
+  filter(o, storedOff) {
+    const ci = this.clicks.find((c) => c.countIn && o.t >= c.t - 0.03 && o.t - c.t < 0.3);
+    if (ci) {
+      this.seen.push({ d: o.t - ci.t, f: o.f || 0 });
+      this.learn();
+      return null;
+    }
+    // right on one of our clicks, in microphone time: the learned delay, or anything a microphone could add
+    const lat = this.latency;
+    const onClick = this.clicks.some((c) => !c.countIn && (lat !== null ? Math.abs(o.t - c.t - lat) < 0.04 : o.t >= c.t - 0.03 && o.t - c.t < 0.25));
+    if (onClick && o.f < Math.max(CLICK_F, this.strength * 2.5)) return null;
+    return o.t - this.offset(storedOff);
+  }
+
+  offset(storedOff) { return this.latency ?? storedOff; }
+
+  learn() {
+    if (this.seen.length < 2) return;
+    const q = (a, p) => a[Math.floor((a.length - 1) * p)];
+    const ds = this.seen.map((x) => x.d).sort((a, b) => a - b);
+    // our own clicks come back with the same delay each time; strums during the count-in would not
+    if (q(ds, 0.75) - q(ds, 0.25) > 0.025) return;
+    this.latency = q(ds, 0.5);
+    this.strength = q(this.seen.map((x) => x.f).sort((a, b) => a - b), 0.5);
+  }
+}
+
 export class StrumGame {
-  // opts: {engine, practice, mode: "easy"|"std"|"pro", input: "mic"|"keys", bars, ui: {mark(bar, i, grade), hud()}}
+  // opts: {engine, practice, mode: "easy"|"std"|"pro", input: "mic"|"keys", bars, gate (ClickBleed, microphone),
+  //        ui: {mark(bar, i, grade), hud()}}
   constructor(opts) {
     Object.assign(this, opts);
     this.targets = [];        // {t, bar, i, win, grade}
@@ -83,14 +132,18 @@ export class StrumGame {
     let heard = now;
     if (this.input === "mic" && this.practice.mic) {
       const an = this.practice.mic.an;
-      const off = this.practice.offsetMs / 1000;
-      for (const o of an.takeOnsets()) this.hit(o.t - off);
-      heard = an.lastT - off;
+      const stored = this.practice.offsetMs / 1000;
+      for (const o of an.takeOnsets()) {
+        const t = this.gate ? this.gate.filter(o, stored) : o.t - stored;
+        if (t !== null) this.hit(t);
+      }
+      heard = an.lastT - (this.gate ? this.gate.offset(stored) : stored);
     }
     for (let k = this.open; k < this.targets.length; k++) {
       const g = this.targets[k];
       if (g.grade) continue;
-      if (Math.min(now, heard) > g.t + g.win + 0.03) this.count(g, "miss");
+      // wait for the microphone to deliver the sound of the window, but not forever if it stalls
+      if (Math.min(now, heard) > g.t + g.win + 0.03 || now > g.t + g.win + 0.6) this.count(g, "miss");
       else break;
     }
     while (this.open < this.targets.length && this.targets[this.open].grade) this.open++;
