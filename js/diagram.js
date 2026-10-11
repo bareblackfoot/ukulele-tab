@@ -25,10 +25,10 @@ export function diagramSVG(name, { tuning = "standard", custom = null, orient = 
   const wid = size * 0.62;        // across the strings
   const cell = len / nFrets;
   const gap = wid / 3;
-  const padL = H ? 10 : 8, padT = title ? (H ? 18 : 18) : 6;
-  const W = H ? padL + len + 8 : padL * 2 + wid + 4;
-  const Ht = H ? padT + wid + 8 : padT + len + 10;
   const r = Math.min(cell, gap) * 0.36;
+  const padL = H ? 10 : Math.max(8, r + 3), padT = title ? 18 : Math.max(6, r + 2);
+  const W = H ? padL + len + 8 : padL * 2 + wid;
+  const Ht = H ? padT + wid + Math.max(8, r + 3) : padT + len + 10;
   // string index 0..3 = G C E A
   const pos = (s, fretIdx) => {
     const along = (fretIdx - 0.5) * cell;

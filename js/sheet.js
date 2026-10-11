@@ -7,6 +7,7 @@ import { diagramSVG } from "./diagram.js";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const STRUM_ARROW = { D: "↓", U: "↑", "-": "·", x: "×", X: "×" };
 const STRING_LABEL = ["G", "C", "E", "A"];
+export const SHEET_MAX_W = 980; // lines get hard to follow when they run across a wide monitor
 
 export class SheetView {
   constructor(root, { onSeek } = {}) {
@@ -25,7 +26,7 @@ export class SheetView {
     this.score = score;
     this.settings = settings;
     const bars = (this.bars = computeBars(score));
-    const W = Math.max(320, this.root.clientWidth - 24);
+    const W = Math.max(320, Math.min(SHEET_MAX_W, this.root.clientWidth - 24));
     const perLine = settings.barsPerLine || (W >= 760 ? 4 : W >= 540 ? 3 : 2);
     const left = 26, right = 8;
     const barW = (W - left - right) / perLine;
@@ -162,6 +163,26 @@ export class SheetView {
     const c = this.lines[geo.line].cursor;
     c.setAttribute("x1", x);
     c.setAttribute("x2", x);
+  }
+
+  // small coloured dot under the staff where a practice target was judged
+  mark(col, grade) {
+    if (!this.bars.length) return;
+    const bar = barAt(this.bars, col);
+    const geo = this.geo[bar.index];
+    if (!geo) return;
+    const x = geo.x0 + 7 + ((col - bar.start) / bar.len) * (geo.x1 - geo.x0 - 14);
+    const svg = this.lines[geo.line].svg;
+    const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    c.setAttribute("class", `jm ${grade}`);
+    c.setAttribute("cx", x);
+    c.setAttribute("cy", 50 + 4);
+    c.setAttribute("r", 4);
+    svg.appendChild(c);
+  }
+
+  clearMarks() {
+    this.root.querySelectorAll(".jm").forEach((e) => e.remove());
   }
 
   scrollToLine(L) {

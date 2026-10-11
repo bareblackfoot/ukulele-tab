@@ -39,7 +39,11 @@
             <select data-set="barsPerLine"><option value="0">자동</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
         </div>
       </div>
-      <button type="button" class="toggle" data-act="edit" aria-pressed="false">편집</button>
+      <span class="viewtabs" role="group" aria-label="화면">
+        <button type="button" class="toggle" data-act="view-sheet" aria-pressed="true">악보</button>
+        <button type="button" class="toggle" data-act="edit" aria-pressed="false">편집</button>
+        <button type="button" class="toggle" data-act="drill" aria-pressed="false">코드 연습</button>
+      </span>
       <button type="button" data-act="help">도움말</button>
     </nav>
     <button type="button" class="primary" data-act="transcribe">유튜브로 악보 따기</button>
@@ -63,13 +67,43 @@
     <label class="ctl">음량 <input type="range" data-opt="volume" min="0" max="100" value="70"></label>
     <button type="button" class="toggle" data-act="yt" aria-pressed="false">YouTube</button>
     <button type="button" class="toggle" data-act="loop" aria-pressed="false" title="지금 보이는 마디 구간 반복: 처음 누르면 시작 마디, 두 번째 누르면 끝 마디">구간 반복</button>
+    <button type="button" class="toggle game-btn" data-act="practice" aria-pressed="false" title="마이크로 듣고 박자와 코드를 판정하는 연습 모드">연습 모드</button>
   </section>
 
-  <section class="chordbar" aria-label="지금 코드와 다음 코드"></section>
+  <section class="game" hidden aria-label="연습 모드">
+    <div class="g-head">
+      <button type="button" data-act="g-rules">규칙</button>
+      <button type="button" data-act="g-sync">싱크 <b class="g-sync-val">+80 ms</b></button>
+      <label>판정 <select class="g-target">
+        <option value="beat">코드: 박마다</option><option value="change">코드: 바뀔 때만</option>
+        <option value="pattern">코드: 스트럼 패턴</option><option value="melody">멜로디 음</option></select></label>
+      <span class="g-modes" role="group" aria-label="난이도">
+        <button type="button" class="toggle" data-mode="easy">쉬움</button>
+        <button type="button" class="toggle" data-mode="std">보통</button>
+        <button type="button" class="toggle" data-mode="pro">어려움</button>
+      </span>
+      <label>입력 <select class="g-input"><option value="mic">마이크</option><option value="keys">키보드 F·J (박자만)</option></select></label>
+      <span class="g-state">준비</span>
+    </div>
+    <div class="g-diag">마이크 <b class="g-mic">--</b> · 들린 코드/음 <b class="g-heard">--</b> · 음량 <i class="g-meter"><i></i></i></div>
+    <div class="g-lane-wrap"><canvas class="g-lane"></canvas><div class="g-judge" aria-hidden="true"></div></div>
+    <div class="g-counts">
+      <span class="perfect">Perfect <b data-c="perfect">0</b></span><span class="ok">Ok <b data-c="ok">0</b></span>
+      <span class="bad">Bad <b data-c="bad">0</b></span><span class="miss">Miss <b data-c="miss">0</b></span>
+      <span>콤보 <b data-c="combo">0</b></span><span>점수 <b data-c="score">0</b></span>
+      <span>정확도 <b data-c="acc">0%</b></span><span>타이밍 <b data-c="tacc">0%</b></span>
+    </div>
+    <p class="g-notice">마이크 판정은 연습을 돕는 기능이라 실제와 다를 수 있습니다. 스피커 소리가 마이크로 들어가면 판정이 흔들리니 이어폰을 쓰세요.</p>
+  </section>
+
+  <div class="cb-wrap">
+    <section class="chordbar" aria-label="지금 코드와 다음 코드"></section>
+  </div>
 
   <main class="views">
     <div class="sheet" tabindex="0" aria-label="코드 악보"></div>
     <div class="editor" hidden></div>
+    <div class="drill" hidden></div>
   </main>
 
   <aside class="yt" hidden>
@@ -133,6 +167,46 @@
     <label class="row">조옮김 (반음) <input type="number" name="transpose" value="0" min="-11" max="11" title="코드와 멜로디를 같이 옮김. 원곡 영상과는 음이 달라짐"></label>
     <p class="hint transpose-hint"></p>
     <div class="row end"><button value="cancel">취소</button><button value="ok" class="primary">적용</button></div>
+  </form>
+</dialog>
+
+<dialog class="dlg-gsync">
+  <form method="dialog">
+    <h2>입력 싱크</h2>
+    <p class="hint">마이크로 들어오는 소리는 조금 늦게 도착합니다. «자동 맞추기»를 누르고 딸깍 소리 10번에 맞춰 줄을 한 번씩 치면 늦는 시간을 재서 맞춥니다. 판정이 계속 LATE로 나오면 값을 올리고, EARLY로 나오면 내리세요.</p>
+    <div class="row"><button type="button" class="primary" data-act="gs-auto">자동 맞추기</button><span class="gs-msg"></span></div>
+    <div class="gs-meter"><span class="gs-center"></span></div>
+    <div class="row">
+      <button type="button" data-d="-10">-10 ms</button><button type="button" data-d="-1">-1 ms</button>
+      <b class="gs-val">+80 ms</b>
+      <button type="button" data-d="1">+1 ms</button><button type="button" data-d="10">+10 ms</button>
+      <button type="button" data-d="reset">초기화</button>
+    </div>
+    <div class="row end"><button value="close">닫기</button></div>
+  </form>
+</dialog>
+
+<dialog class="dlg-grules">
+  <form method="dialog">
+    <h2>연습 모드 판정 규칙</h2>
+    <table class="rules">
+      <tr><th>판정</th><th>타이밍 (쉬움 / 보통 / 어려움)</th><th>코드</th><th>멜로디 음높이</th><th>점수</th></tr>
+      <tr><td class="perfect">Perfect</td><td>무시 / 60 ms 안 / 35 ms 안</td><td>들린 소리에 가장 가까운 코드가 맞는 코드</td><td>50 cent 안 (어려움 30)</td><td>100</td></tr>
+      <tr><td class="ok">Ok</td><td>무시 / 110 ms 안 / 70 ms 안</td><td>가장 가까운 코드와 거의 같음</td><td>100 cent 안 (어려움 60)</td><td>67</td></tr>
+      <tr><td class="bad">Bad</td><td>무시 / 180 ms 안 / 120 ms 안</td><td>다른 코드에 더 가까움</td><td>200 cent 안 (어려움 100)</td><td>33</td></tr>
+      <tr><td class="miss">Miss</td><td>그 밖이거나 안 침</td><td>많이 다름</td><td>그 밖</td><td>0</td></tr>
+    </table>
+    <p class="hint">타이밍이 Ok 범위면 코드 판정을 그대로 두고 EARLY/LATE만 표시합니다. Bad 범위면 최종 판정을 Bad로 낮춥니다. 판정 칸 사이에 친 소리는 감점하지 않습니다. 쉬움은 타이밍을 넓게 보고 코드만 판정합니다. 어려움은 Bad에서도 콤보가 끊깁니다.</p>
+    <div class="row end"><button value="close">닫기</button></div>
+  </form>
+</dialog>
+
+<dialog class="dlg-gresult">
+  <form method="dialog">
+    <h2>연습 결과</h2>
+    <div class="gr-meta"></div>
+    <div class="gr-grid"></div>
+    <div class="row end gr-btns"><button type="button" data-act="gr-retry">다시 하기</button><button type="button" class="gr-next primary" data-act="gr-next" hidden>다음 단계</button><button value="close">닫기</button></div>
   </form>
 </dialog>
 

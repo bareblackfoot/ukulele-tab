@@ -77,6 +77,14 @@ export class Engine {
     };
   }
 
+  // strum a chord given as MIDI pitches in G-C-E-A order (null = string not played)
+  strumMidis(midis, when = null, dir = "D", vel = 0.3) {
+    this.ensure();
+    const t0 = when ?? this.ctx.currentTime + 0.03;
+    const order = dir === "D" ? [0, 1, 2, 3] : [3, 2, 1, 0];
+    order.forEach((s, k) => { if (midis[s] !== null && midis[s] !== undefined) this.note(midis[s], t0 + k * 0.015, 1.6, vel, this.chordBus); });
+  }
+
   click(when, accent) {
     const ctx = this.ctx;
     const o = ctx.createOscillator();
@@ -221,7 +229,7 @@ export class Player {
       }
       if (col >= s.columnCount) {
         const endAt = this.colTime(col);
-        setTimeout(() => { if (this.playing && this.position() >= s.columnCount - 0.01) this.stop(); }, Math.max(0, (endAt - ctx.currentTime) * 1000 + 50));
+        setTimeout(() => { if (this.playing && this.position() >= s.columnCount - 0.01) { this.stop(); this.emit("end"); } }, Math.max(0, (endAt - ctx.currentTime) * 1000 + 50));
         this.nextCol = Infinity;
         break;
       }
