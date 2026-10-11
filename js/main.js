@@ -339,7 +339,14 @@ const actions = {
   examples: () => openExamples(),
   "save-lib": () => saveToLibrary(),
   records: () => setView(view === "records" ? "sheet" : "records"),
-  account: () => (records.session() ? setView("records") : openLogin()),
+  account: async () => {
+    if (records.session()) return setView("records");
+    if (!(await autoPair())) {
+      status("이 PC의 연결 프로그램(브리지)에 연결되지 않아 로그인할 수 없음. 로그인과 기록은 이 PC에서만 됨", true);
+      return;
+    }
+    openLogin();
+  },
   "lg-login": () => doLogin(false),
   "lg-signup": () => doLogin(true),
   lyrics: () => openLyrics(),
@@ -650,7 +657,23 @@ function syncAccount() {
   const s = records.session();
   const b = $("[data-act=account]");
   b.textContent = s ? s.id : "로그인";
-  b.hidden = !records.available() && !s;
+  b.hidden = false;
+}
+
+// connect to the bridge on this PC without copying a token; quietly does nothing on other devices
+async function autoPair() {
+  if (bridgeSettings().token) return true;
+  try {
+    const res = await fetch(bridgeSettings().url.replace(/\/$/, "") + "/pair");
+    if (!res.ok) return false;
+    const d = await res.json();
+    if (!d.token) return false;
+    saveBridgeSettings({ ...bridgeSettings(), token: d.token });
+    syncAccount();
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 function openLogin() {
@@ -918,6 +941,7 @@ window.addEventListener("resize", () => { if (!editing) { sheet.render(score, se
     syncAccount();
     history.replaceState(null, "", location.pathname + location.search);
   }
+  autoPair().then((ok) => { if (ok) records.flush().catch(() => {}); });
   try {
     if (params.get("job")) { await loadJob(params.get("job")); return; }
     if (params.get("example")) { await loadExample(params.get("example") + ".json"); return; }

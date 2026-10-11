@@ -608,9 +608,17 @@ class Handler(BaseHTTPRequestHandler):
         return True
 
     def do_GET(self):
+        path = self.path.split("?")[0].rstrip("/")
+        if path == "/pair":
+            # hand the token to the page itself (browsers set Origin and pages cannot fake it), so the page
+            # connects without the user copying a token; requests without a browser Origin get nothing
+            o = self.headers.get("Origin")
+            if not o or not ALLOWED_ORIGIN.match(o):
+                return self.send(403, {"error": "허용되지 않은 페이지에서 온 요청"})
+            log(f"paired page {o}")
+            return self.send(200, {"token": token(), "version": VERSION})
         if not self.authorized():
             return
-        path = self.path.split("?")[0].rstrip("/")
         try:
             if path == "/health":
                 fail = LOGS / "LAST_FAILURE.txt"
