@@ -1,19 +1,23 @@
 """Build my-library sheets for the favourite songs from the transcriptions of the original recordings.
 
-    python tools/fav_build.py
+    python tools/fav_build.py [job ...]     (no job: all of them, e.g. fav-hitorigotsu for one song)
 
 Chords: either an explicit bar-by-bar progression (read off a beginner sheet, e.g. 하루한장 우쿨렐레) or the
 chords detected in the recording, renamed to the closest chord in a given chord set. With a capo, chord names
 are the shapes played with the capo on. Melody, lyric timing, beat grid and YouTube sync come from the recording.
 """
 import json
+import os
 import re
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 JOBS = REPO / "bridge" / "jobs"
 LIB = Path(r"G:\내 드라이브\2.취미생활\우쿨렐레\악보")
+ONLY = set(sys.argv[1:])
 
 PC = {"C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3, "E": 4, "F": 5, "F#": 6, "Gb": 6, "G": 7, "G#": 8, "Ab": 8,
       "A": 9, "A#": 10, "Bb": 10, "B": 11}
@@ -63,7 +67,10 @@ def bars_of(t):
     return out
 
 
-def build(job, out_name, meta, strum, capo=0, explicit=None, vocab=None, sections=None, simplify=False, am7_after_a=False):
+def build(job, out_name, meta, strum, capo=0, explicit=None, vocab=None, sections=None, simplify=False, am7_after_a=False,
+          lyrics_fn=None):
+    if ONLY and job not in ONLY:
+        return
     t = json.loads((JOBS / job / "result.json").read_text(encoding="utf-8"))
     bars = bars_of(t)
     spb = t.get("stepsPerBeat", 4)
@@ -106,10 +113,17 @@ def build(job, out_name, meta, strum, capo=0, explicit=None, vocab=None, section
     t["meta"] = {**t.get("meta", {}), **meta}
     t["strum"] = {"pattern": strum}
     t["sections"] = [{"col": bars[b - 1][0], "text": s} for b, s in (sections or [])]
+    if lyrics_fn:
+        t["lyrics"], extra = lyrics_fn(t, bars)
+        t["sections"] = sorted(t["sections"] + extra, key=lambda s: s["col"])
     inp = JOBS / job / "fav_input.json"
     # the app's importer reads strum/sections/capo from the transcription file too
     inp.write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
     out = LIB / f"{out_name}.uke.json"
+    if out.exists():   # keep the previous version
+        old = LIB / "이전판"
+        old.mkdir(exist_ok=True)
+        os.replace(out, old / f"{out.stem}_{time.strftime('%Y%m%d-%H%M%S')}.json")
     r = subprocess.run(["node", str(REPO / "tools" / "to_sheet.mjs"), str(inp), str(out)], capture_output=True, text=True, encoding="utf-8")
     print(out.name, "|", r.stdout.strip() or r.stderr.strip()[-300:])
     names = []
@@ -163,8 +177,80 @@ build("fav-landing", "사랑하게 될 거야 - 한로로",
        "source": "원곡 녹음에서 박자·가사·멜로디·코드를 땀. 코드 이름은 하루한장 우쿨렐레 G조 코드표에 맞춤"},
       "D-DU-UDU", vocab=["G", "B7", "Em7", "C", "D", "G7", "Em"])
 
-# ---------------------------------------------------------------- ひとりごつ (하치와레): 원곡 코드를 기본 코드로
+# ---------------------------------------------------------------- ひとりごつ (하치와레): 우쿨소년 블로그 악보
+# https://m.blog.naver.com/uke_boy/223497437366 (2024-07-01): bar-by-bar chords in D, sung in Hangul pronunciation,
+# Korean meaning of each line shown above the bar where the line starts. Bar 1 of that sheet is the first full
+# bar after the 2-beat pickup of the recording.
+HG = [["D", "F#"], ["G"], ["G"], ["A7"],
+      ["G"], ["Em7"], ["D", "F#"], ["G"], ["G", "A7"], ["D"],
+      ["F#m"], ["Bm7"], ["G"], ["Em7"], ["A7"],
+      ["D", "F#"], ["G"], ["G"], ["A7"], ["D"],
+      ["C", "G"], ["C", "G"], ["Bb"], ["C"],
+      ["D", "G"], ["Em7", "A7"], ["D", "G"], ["Em7", "A7"],
+      ["D", "G"], ["Em7", "A7"], ["G"], ["G"], ["Em7"], ["G"], ["D"]]
+# the lyrics themselves (kana as sung, the particle は written わ; the blog's Korean meaning per line; kanji
+# readings for the recogniser's output) stay in my Google Drive, not in this public repo
+HG_TEXT = LIB / "가사자료" / "ひとりごつ.json"
+# lines 0-5 are placed automatically with the recogniser's timings; from あぁ~ on the recogniser mostly failed,
+# so every syllable is placed by hand on the melody notes as (bar, beat). あああ is the same F#-E-F# figure on
+# beats 2-2.5-3 of bars 25, 27 and 29.
+HG_AUTO_LINES = 6
+HG_MANUAL = [
+    [(20, 4), (22, 2), (22, 3), (22, 3.5), (22, 4), (23, 1), (23, 1.5), (24, 1.5), (24, 2.5), (24, 3.25)],
+    [(25, 2), (25, 2.5), (25, 3), (25, 4), (25, 4.5), (26, 1.5), (26, 2), (26, 2.5), (26, 3), (26, 3.5)],
+    [(27, 2), (27, 2.5), (27, 3), (27, 4), (27, 4.5), (28, 1), (28, 1.5), (28, 2), (28, 3), (28, 3.5), (28, 4), (28, 4.5), (29, 1)],
+    [(29, 2), (29, 2.5), (29, 3), (29, 4), (29, 4.5), (30, 1), (30, 1.5), (30, 2), (30, 2.5), (30, 3), (30, 3.5)],
+    [(30, 4.5), (31, 2), (31, 2.5), (31, 3)],
+    [(33, 1), (33, 1.5), (34, 1), (34, 1.5), (35, 1)],
+]
+
+def hitorigotsu_lyrics(t, bars):
+    from kana_hangul import units
+    text = json.loads(HG_TEXT.read_text(encoding="utf-8"))
+    lines, reading = text["lines"], text["readings"]
+    spb = t.get("stepsPerBeat", 4)
+    at = lambda bar, beat: bars[bar][0] + round((beat - 1) * spb)   # bars[0] is the pickup, bars[1] is bar 1
+    # recogniser output -> Hangul units with times; a kanji read with two kana (朝 = 아사) gets its second
+    # syllable an 8th later
+    stream = []
+    for e in sorted(t["lyrics"], key=lambda e: e["col"]):
+        for k, ch in enumerate(reading.get(e["text"], e["text"])):
+            stream.append((ch, e["col"] + k * spb // 2))
+    anchors = [{"col": stream[i][1], "text": u} for u, i in units("".join(c for c, _ in stream))]
+    words = [["".join(u for u, _ in units(w)) for w in ln.split()] for ln in lines]
+    end = at(*HG_MANUAL[0][0])
+    inp = JOBS / "fav-hitorigotsu" / "align_input.json"
+    inp.write_text(json.dumps({"stepsPerBeat": spb, "notes": [{"col": n["col"], "len": n["len"]} for n in t["melody"][0]["notes"] if n["col"] < end],
+                               "anchors": [a for a in anchors if a["col"] < end],
+                               "text": "\n".join(" ".join(ws) for ws in words[:HG_AUTO_LINES])}, ensure_ascii=False), encoding="utf-8")
+    r = subprocess.run(["node", str(REPO / "tools" / "align_lyrics.mjs"), str(inp)], capture_output=True, text=True, encoding="utf-8")
+    if r.returncode:
+        raise SystemExit(r.stderr[-500:])
+    ev = json.loads(r.stdout)
+    for ws, places in zip(words[HG_AUTO_LINES:], HG_MANUAL):
+        syl = "".join(ws)
+        assert len(syl) == len(places), (ws, len(places))
+        ev += [{"col": at(*p), "text": u} for u, p in zip(syl, places)]
+    # unit index where each word starts
+    first, k = {}, 0
+    for li, ws in enumerate(words):
+        for wi, w in enumerate(ws):
+            first[(li, wi)] = k
+            k += len(w)
+    assert k == len(ev), (k, len(ev))
+    sections = {}
+    for key, meaning in text["meanings"]:
+        col = ev[first[tuple(key)]]["col"]
+        bi = max(i for i, (c0, _) in enumerate(bars) if c0 <= col)
+        if col >= bars[bi][0] + bars[bi][1] - spb and bi + 1 < len(bars):
+            bi += 1   # sung on the last beat: the line belongs to the next bar
+        c0 = bars[bi][0]
+        sections[c0] = sections[c0] + " / " + meaning if c0 in sections else meaning
+    return ev, [{"col": c, "text": s} for c, s in sorted(sections.items())]
+
+
 build("fav-hitorigotsu", "ひとりごつ (하치와레의 혼잣말) - ハチワレ",
       {"title": "ひとりごつ (하치와레의 혼잣말)", "artist": "ハチワレ (CV: 田中誠人)", "key": "D",
-       "source": "원곡 녹음(TV 크기)에서 박자·가사·멜로디·코드를 땀. 코드 이름은 U-FRET 초보자판 코드표에 맞춤"},
-      "D-DU-UDU", vocab=["D", "F#", "Bm", "G", "E", "A", "F#m", "C", "A#", "Em"])
+       "source": "원곡 녹음(TV 크기)에서 박자·멜로디를 땀. 코드·가사 발음·뜻은 우쿨소년 블로그 악보"
+                 "(m.blog.naver.com/uke_boy/223497437366)를 따름. 칼립소나 셔플 주법"},
+      "D-DU-UDU", explicit=lay(2, HG), lyrics_fn=hitorigotsu_lyrics)
