@@ -2,7 +2,7 @@
 // each target (a strum on a chord, or a melody note) is judged Perfect / Ok / Bad / Miss on timing and
 // on the chord (or pitch) that sounded. A lane shows targets moving toward the hit line.
 
-import { chordIndexAt, computeBars, barAt } from "./model.js";
+import { chordIndexAt, computeBars, barAt, strumAt } from "./model.js";
 import { chordShape, TUNINGS } from "./chords.js";
 import { MicAnalyzer, chroma, templateChroma, cosine, yin, rms } from "./dsp.js";
 
@@ -67,7 +67,6 @@ export class Practice {
         for (const n of t.notes) out.push({ col: n.col, kind: "note", midi: tuning[n.string] + (s.capo || 0) + n.fret, label: `${"GCEA"[n.string]}${n.fret}` });
       }
     } else if (s.chords.length) {
-      const pat = s.strum.pattern || "D-D-D-D-";
       const firstChord = s.chords[0].col;
       for (let col = firstChord; col < s.columnCount; col++) {
         const ci = chordIndexAt(s, col);
@@ -80,6 +79,7 @@ export class Practice {
         if (this.target === "change") hit = ch.col === col;
         else if (this.target === "beat") hit = inBar % spb === 0;
         else if (spb % 2 === 0 && inBar % (spb / 2) === 0) {
+          const pat = strumAt(s, col) || "D-D-D-D-";
           const c = pat[(inBar / (spb / 2)) % pat.length];
           hit = c === "D" || c === "U";
           dir = c;

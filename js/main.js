@@ -269,11 +269,55 @@ $("[data-opt=volume]").addEventListener("input", (e) => engine.setVolume(+e.targ
 function toggleYT(on) {
   const panel = $(".yt");
   panel.hidden = !on;
+  if (on) placeYT();
   $("[data-act=yt]").setAttribute("aria-pressed", String(on));
   if (on && score.youtube.videoId) yt.load(score.youtube.videoId).then(() => { if (yt.lastError) status(`영상 오류 ${yt.lastError} (퍼가기 금지 영상일 수 있음)`, true); });
   if (!on) yt.pause();
 }
 $(".yt-close").addEventListener("click", () => toggleYT(false));
+
+// the video box: drag it by its title, make it smaller or bigger; place and size are remembered in this browser
+const YT_WIDTHS = [200, 280, 420, 560, 720];
+const ytBox = { ...store.get("uketab.ytbox", {}) };
+function placeYT() {
+  const el = $(".yt");
+  const w = Math.min(YT_WIDTHS[ytBox.size ?? 2] || 420, window.innerWidth - 16);
+  el.style.width = `${w}px`;
+  if (ytBox.x == null) return;   // default corner from the stylesheet
+  const r = el.getBoundingClientRect();
+  const x = Math.max(8, Math.min(window.innerWidth - r.width - 8, ytBox.x));
+  const y = Math.max(8, Math.min(window.innerHeight - Math.min(r.height, 120) - 8, ytBox.y));
+  Object.assign(el.style, { left: `${x}px`, top: `${y}px`, right: "auto", bottom: "auto" });
+}
+$$(".yt-size").forEach((b) => b.addEventListener("click", () => {
+  ytBox.size = Math.max(0, Math.min(YT_WIDTHS.length - 1, (ytBox.size ?? 2) + +b.dataset.step));
+  store.set("uketab.ytbox", ytBox);
+  placeYT();
+}));
+$(".yt-more").addEventListener("click", (e) => {
+  const opts = $(".yt-opts");
+  opts.hidden = !opts.hidden;
+  e.currentTarget.setAttribute("aria-pressed", String(!opts.hidden));
+  placeYT();
+});
+$(".yt-grip").addEventListener("pointerdown", (e) => {
+  const el = $(".yt");
+  const r = el.getBoundingClientRect();
+  const dx = e.clientX - r.left, dy = e.clientY - r.top;
+  const grip = e.currentTarget;
+  grip.setPointerCapture(e.pointerId);
+  el.classList.add("dragging");
+  const move = (ev) => { ytBox.x = ev.clientX - dx; ytBox.y = ev.clientY - dy; placeYT(); };
+  const up = () => {
+    el.classList.remove("dragging");
+    grip.removeEventListener("pointermove", move);
+    store.set("uketab.ytbox", ytBox);
+  };
+  grip.addEventListener("pointermove", move);
+  grip.addEventListener("pointerup", up, { once: true });
+  grip.addEventListener("pointercancel", up, { once: true });
+});
+window.addEventListener("resize", () => { if (!$(".yt").hidden) placeYT(); });
 $(".yt-url").addEventListener("change", (e) => {
   const id = parseVideoId(e.target.value);
   if (!id) { status("YouTube 주소에서 영상 ID를 못 찾음", true); return; }

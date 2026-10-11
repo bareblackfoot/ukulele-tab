@@ -6,6 +6,7 @@ import { diagramSVG } from "./diagram.js";
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const STRUM_ARROW = { D: "↓", U: "↑", "-": "·", x: "×", X: "×" };
+const strumArrows = (p) => p.split("").map((c) => STRUM_ARROW[c] || c).join(" ");
 const STRING_LABEL = ["G", "C", "E", "A"];
 export const SHEET_MAX_W = 980; // lines get hard to follow when they run across a wide monitor
 
@@ -46,12 +47,13 @@ export class SheetView {
     const custom = score.chordShapes;
     const meterAt = new Map(score.meter.map((m) => [m.col, m.beats]));
     const sectionAt = new Map(score.sections.map((s) => [s.col, s.text]));
+    const strumAt = new Map((score.strums || []).map((s) => [s.col, s.pattern]));
 
     const parts = [];
     // header
     const chordsUsed = distinctChords(score).filter((c) => c !== "N.C.");
     const bpm = score.tempo[0].bpm;
-    const pat = (score.strum.pattern || "").split("").map((c) => STRUM_ARROW[c] || c).join(" ");
+    const pat = strumArrows(score.strum.pattern || "");
     parts.push(`<header class="sheet-head">
       <h1>${esc(score.meta.title || "제목 없음")}</h1>
       <div class="sub">${esc(score.meta.artist || "")}</div>
@@ -105,7 +107,14 @@ export class SheetView {
         } else if (bar.len !== bars[Math.max(0, bar.index - 1)].len) {
           g += `<text class="tsig" x="${x0 - 12}" y="${staffY - 2}" text-anchor="middle">${bar.beats}</text><text class="tsig" x="${x0 - 12}" y="${staffY + 14}" text-anchor="middle">4</text>`;
         }
-        if (sectionAt.has(bar.start)) g += `<text class="sect" x="${x0 + 3}" y="${staffY - 38}">${esc(sectionAt.get(bar.start))}</text>`;
+        // a new strum pattern starts here: arrows first, then the section text after them
+        let sx = x0 + 3;
+        if (strumAt.has(bar.start)) {
+          const arrows = strumArrows(strumAt.get(bar.start));
+          g += `<text class="strumchg" x="${sx}" y="${staffY - 38}"><title>여기부터 스트럼 패턴 바뀜</title>${esc(arrows)}</text>`;
+          sx += arrows.length * 6.2 + 10;
+        }
+        if (sectionAt.has(bar.start)) g += `<text class="sect" x="${sx}" y="${staffY - 38}">${esc(sectionAt.get(bar.start))}</text>`;
         if (k === 0 && L > 0 || k === 0) g += `<text class="barno" x="${x0 + 2}" y="${staffY + 32 + (showTab ? 0 : -6)}">${bar.index + 1}</text>`;
         // chords in this bar
         while (ci < score.chords.length && score.chords[ci].col < bar.start) ci++;

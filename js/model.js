@@ -21,6 +21,7 @@ export function newScore({ title = "새 악보", artist = "", bpm = 100, beats =
     meter: [{ col: 0, beats }],
     youtube: { videoId: "", offsetMs: 0 },
     strum: { pattern: "D-DU-UDU" },
+    strums: [],              // strum pattern changes [{col, pattern}] (at bar starts); strum.pattern is used before the first
     sections: [],
     chords: [],
     lyrics: [],
@@ -58,6 +59,7 @@ export function normalizeScore(o) {
   const ev = (arr, key) => (arr || []).filter((e) => e && e[key] !== undefined && String(e[key]).length)
     .map((e) => ({ col: Math.max(0, int(e.col)), [key]: String(e[key]) }));
   s.sections = ev(o.sections, "text");
+  s.strums = cleanStrums(o.strums);
   s.chords = ev(o.chords, "name");
   s.lyrics = ev(o.lyrics, "text");
   s.tracks = (o.tracks && o.tracks.length ? o.tracks : s.tracks).map((t, i) => ({
@@ -82,6 +84,7 @@ export function normalizeScore(o) {
 export function sortScore(s) {
   const byCol = (a, b) => a.col - b.col;
   s.tempo.sort(byCol); s.meter.sort(byCol); s.sections.sort(byCol); s.chords.sort(byCol); s.lyrics.sort(byCol);
+  (s.strums || (s.strums = [])).sort(byCol);
   for (const t of s.tracks) t.notes.sort((a, b) => a.col - b.col || b.string - a.string);
 }
 
@@ -138,6 +141,19 @@ export function barAt(bars, col) {
 }
 
 // chord active at col (last chord at or before col), and the index into score.chords
+export const cleanPattern = (p) => String(p || "").toUpperCase().replace(/[^DUX-]/g, "").slice(0, 32);
+
+function cleanStrums(arr) {
+  return (arr || []).map((e) => ({ col: Math.max(0, int(e && e.col)), pattern: cleanPattern(e && e.pattern) })).filter((e) => e.pattern);
+}
+
+// strum pattern in force at a column (8th-note slots counted from the bar start)
+export function strumAt(score, col) {
+  let p = score.strum.pattern;
+  for (const e of score.strums || []) { if (e.col <= col) p = e.pattern; else break; }
+  return p;
+}
+
 export function chordIndexAt(score, col) {
   const cs = score.chords;
   let lo = 0, hi = cs.length - 1, ans = -1;
@@ -229,6 +245,7 @@ function fromPitchData(d, opts) {
   s.lyrics = d.lyrics || [];
   s.sections = d.sections || [];
   if (d.strum && d.strum.pattern) s.strum = { pattern: String(d.strum.pattern) };
+  s.strums = cleanStrums(d.strums);
   const report = [];
   s.tracks = (d.melody || []).map((t, i) => {
     const capo = Math.max(0, Math.min(12, int(d.capo ?? opts.capo, 0)));

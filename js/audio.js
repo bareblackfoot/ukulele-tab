@@ -1,6 +1,6 @@
 // Sound: plucked-string synthesis (Karplus-Strong), chord strums, metronome, and a look-ahead scheduler.
 
-import { TimeMap, computeBars, barAt, chordIndexAt } from "./model.js";
+import { TimeMap, computeBars, barAt, chordIndexAt, strumAt } from "./model.js";
 import { chordShape, TUNINGS } from "./chords.js";
 
 const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -303,7 +303,7 @@ export class Player {
           if (mode === "change") {
             if (ch.col === col) dir = "D";
           } else if (spb % 2 === 0 && inBar % (spb / 2) === 0) {
-            const pat = s.strum.pattern || "D-D-D-D-";
+            const pat = strumAt(s, col) || "D-D-D-D-";
             const slot = inBar / (spb / 2);
             const c = pat[slot % pat.length];
             if (c === "D" || c === "U") dir = c;
