@@ -111,6 +111,21 @@ def halve_tempo(t):
     changes = {c["col"] for c in t["chords"]}
     phase = max((0, 1), key=lambda ph: sum(1 for k, c in enumerate(starts) if k % 2 == ph and c in changes))
     new_starts = ([0] if phase else []) + [starts[k] for k in range(phase, len(starts), 2)]
+    # a pickup of an odd number of the tracker's beats would become half a beat: put silence in front so every
+    # bar line lands on a whole beat, and move the video sync by the same time
+    rem = (new_starts[1] % (2 * spb)) if len(new_starts) > 1 else 0
+    if rem:
+        sh = 2 * spb - rem
+        tempo = sorted(t["tempo"], key=lambda e: e["col"])
+        t["youtube"]["offsetMs"] = int(round(t["youtube"].get("offsetMs", 0) + sh * 60000.0 / tempo[0]["bpm"] / spb))
+        t["tempo"] = [tempo[0]] + [{**e, "col": e["col"] + sh} for e in tempo[1:]]
+        t["meter"] = [{**m, "col": m["col"] + sh if m["col"] else 0} for m in sorted(t["meter"], key=lambda m: m["col"])]
+        for k in ("chords", "lyrics", "sections"):
+            t[k] = [{**e, "col": e["col"] + sh} for e in t.get(k, [])]
+        for tr in t.get("melody", []):
+            tr["notes"] = [{**nn, "col": nn["col"] + sh} for nn in tr["notes"]]
+        t["columnCount"] += sh
+        new_starts = [0] + [c + sh for c in new_starts[1:]]
     meter, prev = [], None
     for k, a in enumerate(new_starts):
         b = new_starts[k + 1] if k + 1 < len(new_starts) else t["columnCount"]
@@ -361,8 +376,8 @@ build("fav-hitorigotsu", "ひとりごつ (하치와레의 혼잣말) - ハチ�
 # Lyrics and strum patterns come afterwards (tools/sync_check.py, tools/relyric.py, tools/strum_apply.mjs).
 C_SET = ["C", "Em", "Am", "F", "G", "G7", "E7", "Dm", "A7", "D7", "C7", "Fm"]
 G_SET = ["G", "C", "D", "D7", "Em", "Am", "E7", "A7", "G7", "B7"]
-build("new-rainbow", "Somewhere Over the Rainbow · What a Wonderful World - Israel Kamakawiwoʻole",
-      {"title": "Somewhere Over the Rainbow / What a Wonderful World", "artist": "Israel Kamakawiwoʻole", "key": "C",
+build("new-rainbow", "Somewhere Over the Rainbow - Israel Kamakawiwoʻole",
+      {"title": "Somewhere Over the Rainbow", "artist": "Israel Kamakawiwoʻole", "key": "C",
        "source": "IZ 공식 영상(V1bFr2SWP1I)에서 박자·멜로디·코드를 땀. 박을 두 배로 잡아서 절반 빠르기로 접음"},
       "D-DU-UDU", vocab=C_SET, halve=True)
 build("new-alohaoe", "Aloha ʻOe - Queen Liliʻuokalani",
