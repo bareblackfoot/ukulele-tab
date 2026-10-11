@@ -128,6 +128,7 @@ export class Practice {
     if (this.input === "mic" && !this.mic) {
       const ctx = this.engine.ctx;
       try {
+        this.engine.setRecording(true);
         const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
         await ctx.audioWorklet.addModule(new URL("./mic-worklet.js", import.meta.url));
         const src = ctx.createMediaStreamSource(stream);
@@ -139,6 +140,7 @@ export class Practice {
         node.port.onmessage = (e) => an.push(e.data.t, e.data.s);
         this.mic = { stream, node, an };
       } catch (err) {
+        this.engine.setRecording(false);
         this.ui.status(`마이크를 못 씀: ${err.message}. 키보드 입력으로 바꿈`, true);
         this.input = "keys";
         this.ui.syncControls();
@@ -171,6 +173,7 @@ export class Practice {
       this.mic.stream.getTracks().forEach((t) => t.stop());
       this.mic.node.disconnect();
       this.mic = null;
+      this.engine.setRecording(false);
     }
   }
 

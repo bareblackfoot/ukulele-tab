@@ -3,6 +3,29 @@
 import { TimeMap, computeBars, barAt, chordIndexAt } from "./model.js";
 import { chordShape, TUNINGS } from "./chords.js";
 
+const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+function setSession(type) {
+  try { if (navigator.audioSession && navigator.audioSession.type !== type) navigator.audioSession.type = type; } catch (_) { /* older Safari */ }
+}
+
+// older iOS without navigator.audioSession: a playing <audio> element switches the page to media playback,
+// which also lets Web Audio sound in silent mode. Started once, inside the first tap.
+function silentLoop() {
+  const n = 4000, b = new Uint8Array(44 + n);
+  const v = new DataView(b.buffer);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) b[o + i] = s.charCodeAt(i); };
+  str(0, "RIFF"); v.setUint32(4, 36 + n, true); str(8, "WAVEfmt "); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true);
+  v.setUint16(32, 1, true); v.setUint16(34, 8, true); str(36, "data"); v.setUint32(40, n, true);
+  b.fill(128, 44);
+  const el = document.createElement("audio");
+  el.src = "data:audio/wav;base64," + btoa(String.fromCharCode(...b));
+  el.loop = true;
+  el.setAttribute("playsinline", "");
+  el.play().catch(() => {});
+}
+
 export class Engine {
   constructor() {
     this.ctx = null;
@@ -22,8 +45,30 @@ export class Engine {
       this.chordBus.connect(this.master);
       this.clickBus.connect(this.master);
     }
-    if (this.ctx.state === "suspended") this.ctx.resume();
+    // iOS also leaves it "interrupted" after another app or a call took the sound
+    if (this.ctx.state === "suspended" || this.ctx.state === "interrupted") this.ctx.resume().catch(() => {});
     return this.ctx;
+  }
+
+  // Called on every tap. iPad/iPhone: sound may only start inside a tap, and Web Audio stays silent while the
+  // device is in silent mode unless the page says it plays media (as video sites do).
+  unlock() {
+    setSession(this.recording ? "play-and-record" : "playback");
+    const ctx = this.ensure();
+    if (!this.unlocked) {
+      this.unlocked = true;
+      const s = ctx.createBufferSource();
+      s.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+      s.connect(ctx.destination);
+      s.start(0);
+      if (IOS && !("audioSession" in navigator)) silentLoop();
+    }
+  }
+
+  // the microphone (game mode) needs the record-and-play session; back to plain playback when it closes
+  setRecording(on) {
+    this.recording = on;
+    setSession(on ? "play-and-record" : "playback");
   }
   setVolume(v) { this.ensure(); this.master.gain.value = v; }
   setBus(name, v) { this.ensure(); this[name].gain.value = v; }

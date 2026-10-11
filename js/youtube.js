@@ -90,10 +90,11 @@ export class YouTubeSync {
     if (vt < 0) {
       this.player.pauseVideo();
       this.player.seekTo(0, true);
-      this.waitTimer = setTimeout(() => this.player.playVideo(), (-vt / rate) * 1000);
+      this.waitTimer = setTimeout(() => { this.player.playVideo(); this.expectAt = Date.now() + 3000; }, (-vt / rate) * 1000);
     } else {
       this.player.seekTo(vt, true);
       this.player.playVideo();
+      this.expectAt = Date.now() + 3000;
     }
   }
 
@@ -103,6 +104,11 @@ export class YouTubeSync {
     const vt = scoreTime - this.offsetMs / 1000;
     if (vt < 0) return;
     const st = this.player.getPlayerState();
+    // iPad/iPhone refuse to start a video from the page until it has been tapped once
+    if (this.expectAt && Date.now() > this.expectAt) {
+      this.expectAt = null;
+      if (st !== 1 && st !== 3 && this.onBlocked) this.onBlocked();
+    }
     if (st !== 1) return; // only while the video is actually playing (ads, buffering are left alone)
     const cur = this.player.getCurrentTime();
     if (Math.abs(cur - vt) > 0.15) this.player.seekTo(vt, true);
@@ -110,6 +116,7 @@ export class YouTubeSync {
 
   pause() {
     clearTimeout(this.waitTimer);
+    this.expectAt = null;
     if (this.ready) this.player.pauseVideo();
   }
 }

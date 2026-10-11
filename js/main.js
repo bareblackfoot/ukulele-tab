@@ -46,6 +46,7 @@ status("");
 const engine = new Engine();
 const player = new Player(engine);
 const yt = new YouTubeSync($(".yt-player"));
+yt.onBlocked = () => status("영상이 시작되지 않음. 아이패드·아이폰은 영상 화면을 한 번 직접 눌러 재생해야 함. 그다음부터는 재생 버튼으로 같이 움직임", true);
 const sheet = new SheetView($(".sheet"), { onSeek: (col) => seek(col) });
 const chordbar = new ChordBar($(".chordbar"));
 const editor = new Editor($(".editor"), {
@@ -365,6 +366,9 @@ const actions = {
   transcribe: () => openTranscribe(),
   loop: () => toggleLoop(),
 };
+// iPad/iPhone only start sound inside a tap; capture phase so it runs before the button's own handler
+for (const ev of ["touchend", "click", "keydown"]) window.addEventListener(ev, () => engine.unlock(), { capture: true, passive: true });
+
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-act]");
   if (!b || !actions[b.dataset.act]) return;
