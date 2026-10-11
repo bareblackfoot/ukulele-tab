@@ -1,14 +1,14 @@
-// Put a melody (MIDI pitches) on ukulele strings and frets.
+// Put a melody (MIDI pitches) on the strings and frets of the score's instrument.
 // Picks one octave shift for the whole melody so most notes fit, then chooses string/fret per note
 // with a shortest-path search that prefers low frets and small hand movement.
 
-import { TUNINGS } from "./chords.js";
+import { tuningOf, instOf } from "./instrument.js";
 
 export const MAX_FRET = 15;
 
 export function playableRange(tuningName) {
-  const st = (TUNINGS[tuningName] || TUNINGS.standard).strings;
-  return { lo: Math.min(...st), hi: Math.max(...st) + MAX_FRET };
+  const st = tuningOf(tuningName).strings;
+  return { lo: Math.min(...st), hi: Math.max(...st) + instOf(tuningName).maxFret };
 }
 
 export function bestOctaveShift(midis, tuningName) {
@@ -19,17 +19,17 @@ export function bestOctaveShift(midis, tuningName) {
   let best = null;
   for (let k = -36; k <= 36; k += 12) {
     const inRange = midis.filter((m) => m + k >= lo && m + k <= hi).length;
-    const score = inRange * 1000 - Math.abs(median + k - 70) - Math.abs(k) * 0.01;
+    const score = inRange * 1000 - Math.abs(median + k - instOf(tuningName).melodyCenter) - Math.abs(k) * 0.01;
     if (!best || score > best.score) best = { k, score };
   }
   return best.k;
 }
 
-function candidates(m, strings) {
+function candidates(m, strings, maxFret = MAX_FRET) {
   const out = [];
   strings.forEach((open, s) => {
     const f = m - open;
-    if (f >= 0 && f <= MAX_FRET) out.push({ s, f });
+    if (f >= 0 && f <= maxFret) out.push({ s, f });
   });
   return out;
 }
@@ -45,7 +45,8 @@ function moveCost(a, b) {
 
 // notes: [{col, len, midi}] -> {notes: [{col, len, string, fret}], shift, folded}
 export function melodyToTab(notes, tuningName = "standard", octaveShift = undefined) {
-  const strings = (TUNINGS[tuningName] || TUNINGS.standard).strings;
+  const strings = tuningOf(tuningName).strings;
+  const maxFret = instOf(tuningName).maxFret;
   const { lo, hi } = playableRange(tuningName);
   const shift = Number.isFinite(octaveShift) ? octaveShift : bestOctaveShift(notes.map((n) => n.midi), tuningName);
   let folded = 0;
@@ -67,7 +68,7 @@ export function melodyToTab(notes, tuningName = "standard", octaveShift = undefi
     if (g && g.col === n.col) g.notes.push(n); else groups.push({ col: n.col, notes: [n] });
   }
   const lead = groups.map((g) => g.notes[0]);
-  const cand = lead.map((n) => candidates(n.m, strings));
+  const cand = lead.map((n) => candidates(n.m, strings, maxFret));
   // Viterbi over the lead line
   const cost = [], back = [];
   cand.forEach((cs, i) => {
@@ -94,7 +95,7 @@ export function melodyToTab(notes, tuningName = "standard", octaveShift = undefi
     const used = new Set([pick[i].s]);
     out.push({ col: g.col, len: g.notes[0].len, string: pick[i].s, fret: pick[i].f });
     for (const n of g.notes.slice(1)) {
-      const cs = candidates(n.m, strings).filter((c) => !used.has(c.s))
+      const cs = candidates(n.m, strings, maxFret).filter((c) => !used.has(c.s))
         .sort((a, b) => Math.abs(a.f - pick[i].f) - Math.abs(b.f - pick[i].f));
       if (!cs.length) continue;
       used.add(cs[0].s);
@@ -102,7 +103,7 @@ export function melodyToTab(notes, tuningName = "standard", octaveShift = undefi
     }
   });
   // a string can only sound one note: cut a note when the next note on the same string starts
-  const lastOnString = [null, null, null, null];
+  const lastOnString = strings.map(() => null);
   for (const n of out.sort((a, b) => a.col - b.col)) {
     const prev = lastOnString[n.string];
     if (prev && prev.col + prev.len > n.col) prev.len = Math.max(1, n.col - prev.col);

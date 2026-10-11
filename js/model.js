@@ -1,9 +1,11 @@
-// Score data model ("ukulele-sheet" v1), time map, bars and format conversion.
+// Score data model ("ukulele-sheet" v1, also used for the guitar), time map, bars and format conversion.
 //
 // Time runs in columns (steps). stepsPerBeat columns make one beat.
-// Strings are 0..3 = G, C, E, A. A note is {col, len, string, fret}.
+// The tuning names the instrument (js/instrument.js). Strings count from 0: ukulele G, C, E, A;
+// guitar low E .. high E. A note is {col, len, string, fret}.
 
-import { TUNINGS } from "./chords.js";
+import { TUNINGS, transposeChord, capoChoices, speller } from "./chords.js";
+import { INST, tuningOf, instOf } from "./instrument.js";
 import { melodyToTab } from "./fingering.js";
 
 export const FORMAT_NAME = "ukulele-sheet";
@@ -13,7 +15,7 @@ export function newScore({ title = "새 악보", artist = "", bpm = 100, beats =
   return {
     format: { name: FORMAT_NAME, version: FORMAT_VERSION },
     meta: { title, artist, key: "", arranger: "", comment: "", source: "" },
-    tuning: "standard",
+    tuning: INST.defaultTuning,
     capo: 0,                 // chord shapes and tab frets are relative to the capo
     stepsPerBeat,
     columnCount: bars * beats * stepsPerBeat,
@@ -37,17 +39,26 @@ const int = (x, d = 0) => (Number.isFinite(Number(x)) ? Math.round(Number(x)) : 
 export function loadAnyFormat(obj, opts = {}) {
   if (!obj || typeof obj !== "object") throw new Error("JSON 객체가 아님");
   const fname = obj.format && (obj.format.name || obj.format.formatName);
-  if (fname === FORMAT_NAME) return normalizeScore(obj);
-  if (fname === "spred-sheet") return fromSpred(obj, opts);
-  if (fname === "ukulele-transcription") return fromTranscription(obj, opts);
-  throw new Error(`모르는 악보 형식: ${fname || "(format 없음)"}`);
+  let s;
+  if (fname === FORMAT_NAME) s = normalizeScore(obj);
+  else if (fname === "spred-sheet") s = fromSpred(obj, opts);
+  else if (fname === "ukulele-transcription") s = fromTranscription(obj, opts);
+  else throw new Error(`모르는 악보 형식: ${fname || "(format 없음)"}`);
+  // a sheet written for the other instrument opens moved onto this site's instrument
+  if (!opts.keepInstrument && instOf(s.tuning).id !== INST.id) {
+    const report = s.importReport;
+    s = toInstrument(s, INST.defaultTuning);
+    if (report) s.importReport = report;
+  }
+  return s;
 }
 
 export function normalizeScore(o) {
   const s = newScore();
   s.meta = { ...s.meta, ...(o.meta || {}) };
-  s.tuning = TUNINGS[o.tuning] ? o.tuning : "standard";
+  s.tuning = TUNINGS[o.tuning] ? o.tuning : "standard"; // files from before the guitar site are ukulele sheets
   s.capo = Math.max(0, Math.min(12, int(o.capo, 0)));
+  const lastString = tuningOf(s.tuning).strings.length - 1;
   s.stepsPerBeat = Math.max(1, Math.min(12, int(o.stepsPerBeat, 4)));
   s.tempo = (o.tempo || []).map((t) => ({ col: Math.max(0, int(t.col)), bpm: Number(t.bpm) }))
     .filter((t) => t.bpm >= 10 && t.bpm <= 400);
@@ -71,7 +82,7 @@ export function normalizeScore(o) {
     muted: !!t.muted,
     notes: (t.notes || []).map((n) => ({
       col: Math.max(0, int(n.col)), len: Math.max(1, int(n.len, 1)),
-      string: Math.max(0, Math.min(3, int(n.string))), fret: Math.max(0, Math.min(24, int(n.fret))),
+      string: Math.max(0, Math.min(lastString, int(n.string))), fret: Math.max(0, Math.min(24, int(n.fret))),
       ...(n.tech ? { tech: String(n.tech) } : {}),
     })),
   }));
@@ -173,7 +184,49 @@ export function distinctChords(score) {
 }
 
 export function midiOf(note, tuningName, capo = 0) {
-  return (TUNINGS[tuningName] || TUNINGS.standard).strings[note.string] + capo + note.fret;
+  return tuningOf(tuningName).strings[note.string] + capo + note.fret;
+}
+
+// Same sound on another tuning or capo, plus an optional transposition k (semitones): chord shapes move by
+// the capo change, the melody is placed again on the new strings (octave chosen when octave is null).
+// Changes s in place.
+export function retune(s, newTuning, newCapo, k = 0, octave = 0) {
+  const oldCapo = s.capo || 0;
+  const shapeShift = k - (newCapo - oldCapo);
+  for (const t of s.tracks) {
+    const mel = t.notes.map((n) => ({ col: n.col, len: n.len, midi: midiOf(n, s.tuning, oldCapo) + k - newCapo }));
+    t.notes = melodyToTab(mel, newTuning, octave).notes;
+  }
+  if (shapeShift) {
+    const moved = s.chords.map((c) => (c.name === "N.C." ? c.name : transposeChord(c.name, shapeShift)));
+    const spell = speller(moved);
+    s.chords = s.chords.map((c, i) => ({ ...c, name: c.name === "N.C." ? c.name : spell(moved[i]) }));
+  }
+  if (k && s.meta.key) s.meta.key = transposeChord(s.meta.key, k);
+  if (instOf(newTuning).id !== instOf(s.tuning).id) s.chordShapes = {}; // own shapes are for one instrument
+  s.tuning = newTuning;
+  s.capo = newCapo;
+  return s;
+}
+
+// A copy of the score for another instrument (named by its tuning): same sound, the capo where its chord
+// shapes are easiest (or the given capo), the melody placed again on its strings.
+export function toInstrument(score, tuning, fixedCapo = null) {
+  const s = JSON.parse(JSON.stringify(score));
+  delete s.importReport;
+  const from = instOf(s.tuning);
+  const sounding = s.chords.filter((c) => c.name !== "N.C.").map((c) => transposeChord(c.name, s.capo || 0));
+  const capo = fixedCapo ?? (sounding.length ? capoChoices(sounding, tuning)[0].capo : 0);
+  retune(s, tuning, capo, 0, null);
+  // the key text names the shapes of the old capo ("Gb (카포 6, C 운지)"): write it for the new one
+  const key = (s.meta.key || "").replace(/\s*\(.*\)\s*$/, "").trim();
+  if (key) {
+    const shapes = speller(s.chords.map((c) => c.name).filter((n) => n !== "N.C."))(transposeChord(key, -capo));
+    s.meta.key = capo ? `${key} (카포 ${capo}, ${shapes} 운지)` : /카포 없음/.test(s.meta.key) ? `${key} (카포 없음)` : key;
+  }
+  const out = normalizeScore(s);
+  out.converted = { from: from.id, capo };
+  return out;
 }
 
 // ---------------------------------------------------------------- imports
@@ -237,11 +290,11 @@ export function fromTranscription(o, opts = {}) {
   return fromPitchData({ ...o, melody: o.melody || [] }, opts);
 }
 
-// Shared path for formats that store melody as MIDI pitches: put the melody on ukulele strings.
+// Shared path for formats that store melody as MIDI pitches: put the melody on the instrument's strings.
 function fromPitchData(d, opts) {
   const s = newScore();
   s.meta = { ...s.meta, ...(d.meta || {}) };
-  s.tuning = TUNINGS[opts.tuning] ? opts.tuning : "standard";
+  s.tuning = TUNINGS[opts.tuning] ? opts.tuning : INST.defaultTuning;
   s.stepsPerBeat = int(d.stepsPerBeat, 4) || 4;
   s.tempo = d.tempo && d.tempo.length ? d.tempo : [{ col: 0, bpm: 100 }];
   s.meter = d.meter && d.meter.length ? d.meter : [{ col: 0, beats: 4 }];
@@ -269,6 +322,6 @@ function fromPitchData(d, opts) {
 }
 
 export function toJSON(score) {
-  const { importReport, ...rest } = score;
+  const { importReport, converted, ...rest } = score;
   return JSON.stringify(rest, null, 1);
 }

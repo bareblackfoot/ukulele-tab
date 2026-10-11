@@ -1,9 +1,10 @@
-// Practice mode (rhythm game), modelled on SPRED's practice mode: the microphone hears your ukulele,
+// Practice mode (rhythm game), modelled on SPRED's practice mode: the microphone hears your instrument,
 // each target (a strum on a chord, or a melody note) is judged Perfect / Ok / Bad / Miss on timing and
 // on the chord (or pitch) that sounded. A lane shows targets moving toward the hit line.
 
 import { chordIndexAt, computeBars, barAt, strumAt } from "./model.js";
-import { chordShape, TUNINGS } from "./chords.js";
+import { chordShape } from "./chords.js";
+import { tuningOf, instOf, skey } from "./instrument.js";
 import { MicAnalyzer, chroma, templateChroma, cosine, yin, rms } from "./dsp.js";
 
 const GRADES = ["perfect", "ok", "bad", "miss"];
@@ -29,10 +30,10 @@ export class Practice {
     this.player = player;
     this.ui = ui;            // {panel, lane, judge, onMark(col, grade), clearMarks(), status(msg, err), showResult(r)}
     this.on = false;
-    this.mode = store.get("uketab.practice.mode", "std");
-    this.target = store.get("uketab.practice.target", "beat");
-    this.input = store.get("uketab.practice.input", "mic");
-    this.offsetMs = store.get("uketab.practice.offset", 80);
+    this.mode = store.get(skey("practice.mode"), "std");
+    this.target = store.get(skey("practice.target"), "beat");
+    this.input = store.get(skey("practice.input"), "mic");
+    this.offsetMs = store.get(skey("practice.offset"), 80);
     this.mic = null;
     this.targets = [];
     this.pending = [];
@@ -61,10 +62,10 @@ export class Practice {
     const bars = computeBars(s);
     const out = [];
     if (this.target === "melody") {
-      const tuning = (TUNINGS[s.tuning] || TUNINGS.standard).strings;
+      const { strings: tuning, names } = tuningOf(s.tuning);
       for (const t of s.tracks) {
         if (t.hidden || t.muted) continue;
-        for (const n of t.notes) out.push({ col: n.col, kind: "note", midi: tuning[n.string] + (s.capo || 0) + n.fret, label: `${"GCEA"[n.string]}${n.fret}` });
+        for (const n of t.notes) out.push({ col: n.col, kind: "note", midi: tuning[n.string] + (s.capo || 0) + n.fret, label: `${names[n.string]}${n.fret}` });
       }
     } else if (s.chords.length) {
       const firstChord = s.chords[0].col;
@@ -92,16 +93,16 @@ export class Practice {
     this.targets = out;
     // chord templates for every chord in the song, to tell the right chord from the others
     this.templates = new Map();
-    const tuning = (TUNINGS[s.tuning] || TUNINGS.standard).strings;
+    const tuning = tuningOf(s.tuning).strings;
     for (const c of new Set(s.chords.map((c) => c.name))) {
       const sh = chordShape(c, s.tuning, s.chordShapes);
       if (sh) this.templates.set(c, templateChroma(sh.frets.map((f, i) => (f < 0 ? null : tuning[i] + (s.capo || 0) + f)).filter((x) => x !== null)));
     }
     // a few common chords as well, so a wrong chord outside the song still scores lower
-    for (const c of ["C", "G", "Am", "F", "D", "Em", "G7", "Dm", "A", "E7"]) {
+    for (const c of instOf(s.tuning).common) {
       if (this.templates.has(c)) continue;
       const sh = chordShape(c, s.tuning);
-      if (sh) this.templates.set(c, templateChroma(sh.frets.map((f, i) => tuning[i] + (s.capo || 0) + f)));
+      if (sh) this.templates.set(c, templateChroma(sh.frets.map((f, i) => (f < 0 ? null : tuning[i] + (s.capo || 0) + f)).filter((x) => x !== null)));
     }
   }
 
@@ -234,7 +235,8 @@ export class Practice {
     }
     const x = an.window(at + 0.03, 2048);
     if (!x) return { grade: "bad", heard: "?" };
-    const { f0, clarity } = yin(x, sr);
+    // guitar melody notes go down to about C3 (131 Hz); the ukulele's lowest string is G3/C4
+    const { f0, clarity } = yin(x, sr, instOf(this.score.tuning).id === "guitar" ? 75 : 180);
     if (clarity < 0.5) return { grade: "bad", heard: "?" };
     const cents = 1200 * Math.log2(f0 / (440 * 2 ** ((target.midi - 69) / 12)));
     const w = PITCH[this.mode];

@@ -41,8 +41,15 @@ SWITCH_STATE = USER / ".claude" / "account-switch" / "state.json"
 ACCOUNTS = ["claude-team", "claude-team2"]
 NOWIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 JOB_TIMEOUT = 45 * 60
-# my own sheets (lyrics are copyrighted, so they live here and not in the public repo)
+# my own sheets (lyrics are copyrighted, so they live here and not in the public repo), one folder per instrument;
+# the guitar site (guitar-tab) sends X-Instrument: guitar
 LIBRARY = Path(os.environ.get("UKE_LIBRARY", r"G:\내 드라이브\2.취미생활\우쿨렐레\악보"))
+LIBRARIES = {"ukulele": LIBRARY, "guitar": Path(os.environ.get("GUITAR_LIBRARY", r"G:\내 드라이브\2.취미생활\기타\악보"))}
+TUNING_NAMES = ("standard", "low-g", "guitar", "guitar-drop-d")
+
+
+def lib_dir(inst):
+    return LIBRARIES.get(str(inst or "ukulele"), LIBRARY)
 LIB_NAME = re.compile(r"^[^\\/:*?\"<>|]{1,120}\.json$")
 PY = sys.executable.replace("pythonw.exe", "python.exe")
 
@@ -127,14 +134,14 @@ def list_jobs():
 _lib_cache = {}
 
 
-def library_list():
+def library_list(folder=LIBRARY):
     out = []
-    if not LIBRARY.exists():
+    if not folder.exists():
         return out
-    for f in sorted(LIBRARY.glob("*.json")):
+    for f in sorted(folder.glob("*.json")):
         try:
             st = f.stat()
-            key = (f.name, st.st_mtime)
+            key = (str(f), st.st_mtime)
             if key not in _lib_cache:
                 d = json.loads(f.read_text(encoding="utf-8"))
                 m = d.get("meta", {})
@@ -164,15 +171,15 @@ def library_auth(session):
     return uid
 
 
-def library_save(name, score):
+def library_save(name, score, folder=LIBRARY):
     if not LIB_NAME.match(name or ""):
         raise ValueError("파일 이름 형식이 아님")
     if (score.get("format") or {}).get("name") != "ukulele-sheet":
-        raise ValueError("우쿨렐레 악보 형식이 아님")
-    LIBRARY.mkdir(parents=True, exist_ok=True)
-    target = LIBRARY / name
+        raise ValueError("악보 형식이 아님")
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / name
     if target.exists():  # keep the previous version
-        old = LIBRARY / "이전판"
+        old = folder / "이전판"
         old.mkdir(exist_ok=True)
         os.replace(target, old / f"{target.stem}_{time.strftime('%Y%m%d-%H%M%S')}.json")
     target.write_text(json.dumps(score, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -337,7 +344,7 @@ def acc_change_pin(tok, old, new):
 
 
 RESULT_FIELDS = ["time", "song", "title", "artist", "mode", "target", "rate", "score", "acc", "tacc", "maxCombo",
-                 "perfect", "ok", "bad", "miss", "early", "late", "n", "total", "fullCombo"]
+                 "perfect", "ok", "bad", "miss", "early", "late", "n", "total", "fullCombo", "inst"]
 
 
 def rec_save(tok, results):
@@ -622,7 +629,7 @@ class Handler(BaseHTTPRequestHandler):
         if o and ALLOWED_ORIGIN.match(o):
             self.send_header("Access-Control-Allow-Origin", o)
             self.send_header("Vary", "Origin")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Bridge-Token, X-Session")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Bridge-Token, X-Session, X-Instrument")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.send_header("Access-Control-Allow-Private-Network", "true")
             self.send_header("Access-Control-Max-Age", "600")
@@ -693,12 +700,13 @@ class Handler(BaseHTTPRequestHandler):
                     library_auth(self.headers.get("X-Session"))
                 except PermissionError as e:
                     return self.send(403, {"error": str(e)})
+            folder = lib_dir(self.headers.get("X-Instrument"))
             if path == "/library":
-                return self.send(200, {"items": library_list(), "folder": str(LIBRARY)})
+                return self.send(200, {"items": library_list(folder), "folder": str(folder)})
             if path.startswith("/library/"):
                 from urllib.parse import unquote
                 name = unquote(path[len("/library/"):])
-                f = LIBRARY / name
+                f = folder / name
                 if not LIB_NAME.match(name) or not f.exists():
                     return self.send(404, {"error": "없는 악보"})
                 return self.send(200, json.loads(f.read_text(encoding="utf-8")))
@@ -754,7 +762,7 @@ class Handler(BaseHTTPRequestHandler):
                     library_auth(body.get("session"))
                 except PermissionError as e:
                     return self.send(403, {"error": str(e)})
-                name = library_save(str(body.get("file") or ""), body.get("score") or {})
+                name = library_save(str(body.get("file") or ""), body.get("score") or {}, lib_dir(body.get("inst")))
                 log(f"library saved {name}")
                 return self.send(200, {"file": name})
             except (ValueError, OSError) as e:
@@ -772,7 +780,7 @@ class Handler(BaseHTTPRequestHandler):
             lang = str(body.get("lang") or "")
             if lang not in ("", "ko", "ja", "en", "zh"):
                 return self.send(400, {"error": "지원하지 않는 언어"})
-            tuning = body.get("tuning") if body.get("tuning") in ("standard", "low-g") else "standard"
+            tuning = body.get("tuning") if body.get("tuning") in TUNING_NAMES else "standard"
             for j in list_jobs():
                 if j["videoId"] == vid and j["state"] in ("queued", "running"):
                     return self.send(200, {"id": j["id"], "state": j["state"], "note": "같은 영상이 이미 진행 중"})

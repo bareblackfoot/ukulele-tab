@@ -5,7 +5,8 @@
 
 import { songChords, songTransitions, songKey } from "./drills.js";
 import { diagramSVG } from "./diagram.js";
-import { chordShape, TUNINGS } from "./chords.js";
+import { chordShape } from "./chords.js";
+import { tuningOf, skey } from "./instrument.js";
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const store = {
@@ -13,7 +14,14 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* blocked */ } },
 };
 const FINGER = ["", "검지", "중지", "약지", "새끼"];
-const STRING_NAME = ["G현(맨 아래 줄)", "C현", "E현", "A현(맨 위 줄)"];
+const UKE_STRING_NAME = ["G현(맨 아래 줄)", "C현", "E현", "A현(맨 위 줄)"];
+// guitar strings are counted from the high E (1번 줄, top line of the diagram) to the low E (6번 줄)
+const stringNames = (tuning) => {
+  const t = tuningOf(tuning);
+  if (t.inst !== "guitar") return UKE_STRING_NAME;
+  const n = t.names.length;
+  return t.names.map((nm, i) => `${n - i}번 줄(${nm.toUpperCase()}${i === 0 ? ", 맨 아래 줄" : i === n - 1 ? ", 맨 위 줄" : ""})`);
+};
 
 export class DrillView {
   // deps: {engine, practice, settings, status(msg, err)}
@@ -57,6 +65,7 @@ export class DrillView {
     const sh = chordShape(name, s.tuning, s.chordShapes);
     if (!sh) return [];
     const lines = [];
+    const STRING_NAME = stringNames(s.tuning);
     if (sh.barre) lines.push(`검지(1)로 ${sh.barre.fret}프렛을 ${STRING_NAME[sh.barre.to].replace(/\(.*\)/, "")}부터 ${STRING_NAME[sh.barre.from].replace(/\(.*\)/, "")}까지 눕혀 누름`);
     sh.frets.forEach((f, i) => {
       if (f <= 0) return;
@@ -65,8 +74,10 @@ export class DrillView {
       lines.push(`${FINGER[fg] || ""}(${fg}) → ${STRING_NAME[i]} ${f}프렛`);
     });
     const open = sh.frets.map((f, i) => (f === 0 ? STRING_NAME[i].replace(/\(.*\)/, "") : null)).filter(Boolean);
-    if (open.length === 4) lines.push("아무 줄도 누르지 않음");
+    const muted = sh.frets.map((f, i) => (f < 0 ? STRING_NAME[i].replace(/\(.*\)/, "") : null)).filter(Boolean);
+    if (open.length === sh.frets.length) lines.push("아무 줄도 누르지 않음");
     else if (open.length) lines.push(`${open.join("·")}은 누르지 않음`);
+    if (muted.length) lines.push(`${muted.join("·")}은 치지 않음(×)`);
     return lines;
   }
 
@@ -115,8 +126,8 @@ export class DrillView {
           <label>바꿀 코드 <select data-dr="pair">${pairOpts}</select></label>
           <label>BPM <select data-dr="bpm">${[40, 50, 60, 70, 80, 90, 100, 110, 120].map((b) => `<option ${b === this.bpm() ? "selected" : ""}>${b}</option>`).join("")}</select></label>
           <label>한 코드에 <select data-dr="beats">${[4, 2, 1].map((b) => `<option value="${b}" ${b === this.beatsEach() ? "selected" : ""}>${b}박</option>`).join("")}</select></label>
-          <label><input type="checkbox" data-dr="sound" ${store.get("uketab.drill.sound", true) ? "checked" : ""}> 코드 소리</label>
-          <label><input type="checkbox" data-dr="mic" ${store.get("uketab.drill.mic", false) ? "checked" : ""}> 마이크로 판정</label>
+          <label><input type="checkbox" data-dr="sound" ${store.get(skey("drill.sound"), true) ? "checked" : ""}> 코드 소리</label>
+          <label><input type="checkbox" data-dr="mic" ${store.get(skey("drill.mic"), false) ? "checked" : ""}> 마이크로 판정</label>
           <button type="button" class="primary" data-dr="go">${r ? "멈춤" : "시작"}</button>
         </div>
         <div class="dr-change">
@@ -141,7 +152,7 @@ export class DrillView {
     const s = this.score;
     const sh = chordShape(name, s.tuning, s.chordShapes);
     if (!sh) return;
-    const tun = (TUNINGS[s.tuning] || TUNINGS.standard).strings;
+    const tun = tuningOf(s.tuning).strings;
     this.d.engine.strumMidis(sh.frets.map((f, i) => (f < 0 ? null : tun[i] + f + (s.capo || 0))));
   }
 
@@ -149,7 +160,7 @@ export class DrillView {
     this.cur = (this.cur + d + this.chords.length) % this.chords.length;
     this.hits = 0;
     this.render();
-    if (store.get("uketab.drill.autoplay", true)) this.hear(this.chords[this.cur].name);
+    if (store.get(skey("drill.autoplay"), true)) this.hear(this.chords[this.cur].name);
   }
 
   async startListening() {
@@ -210,14 +221,14 @@ export class DrillView {
   }
 
   // ---------------------------------------------------------------- change mode
-  bpm() { return store.get("uketab.drill.bpm", 60); }
-  beatsEach() { return store.get("uketab.drill.beats", 4); }
+  bpm() { return store.get(skey("drill.bpm"), 60); }
+  beatsEach() { return store.get(skey("drill.beats"), 4); }
   songOrder() {
     // the song's chords in the order they first appear
     return this.chords.map((c) => c.name);
   }
   currentSeq() {
-    const v = store.get("uketab.drill.pair", "seq");
+    const v = store.get(skey("drill.pair"), "seq");
     if (v === "seq" || !this.pairs[+v]) return this.songOrder();
     return [this.pairs[+v].a, this.pairs[+v].b];
   }
@@ -231,7 +242,7 @@ export class DrillView {
   async startChange() {
     const eng = this.d.engine;
     eng.ensure();
-    const useMic = store.get("uketab.drill.mic", false);
+    const useMic = store.get(skey("drill.mic"), false);
     if (useMic) {
       this.d.practice.input = "mic";
       if (!(await this.d.practice.ensureMic())) return;
@@ -254,10 +265,10 @@ export class DrillView {
         const when = t0 + r.next * beat;
         const k = r.next - 4; // first 4 beats are the count-in
         eng.click(when, k < 0 ? k === -4 : k % beatsEach === 0);
-        if (k >= 0 && k % beatsEach === 0 && store.get("uketab.drill.sound", true)) {
+        if (k >= 0 && k % beatsEach === 0 && store.get(skey("drill.sound"), true)) {
           const name = seq[Math.floor(k / beatsEach) % seq.length];
           const s = this.score, sh = chordShape(name, s.tuning, s.chordShapes);
-          const tun = (TUNINGS[s.tuning] || TUNINGS.standard).strings;
+          const tun = tuningOf(s.tuning).strings;
           if (sh) eng.strumMidis(sh.frets.map((f, i) => (f < 0 ? null : tun[i] + f + (s.capo || 0))), when, "D", 0.12);
         }
         r.next++;
@@ -321,7 +332,7 @@ export class DrillView {
     this.run = null;
     if (r.useMic && r.changes) {
       const acc = Math.round((r.right / r.changes) * 100);
-      const pairSel = store.get("uketab.drill.pair", "seq");
+      const pairSel = store.get(skey("drill.pair"), "seq");
       if (pairSel !== "seq" && this.pairs[+pairSel]) {
         const p = this.pairs[+pairSel];
         const key = [p.a, p.b].sort().join("|");
@@ -330,7 +341,7 @@ export class DrillView {
         if (!old || this.bpm() > old.bpm || (this.bpm() === old.bpm && acc > old.acc)) prog.pairs[key] = { bpm: this.bpm(), acc };
         this.saveProgress(prog);
       }
-      if (acc >= 80 && this.bpm() < 120) store.set("uketab.drill.bpm", this.bpm() + 10);
+      if (acc >= 80 && this.bpm() < 120) store.set(skey("drill.bpm"), this.bpm() + 10);
     }
     this.render();
   }
@@ -369,11 +380,11 @@ export class DrillView {
     const el = e.target.closest("[data-dr]");
     if (!el) return;
     const k = el.dataset.dr;
-    if (k === "pair") store.set("uketab.drill.pair", el.value);
-    if (k === "bpm") store.set("uketab.drill.bpm", +el.value);
-    if (k === "beats") store.set("uketab.drill.beats", +el.value);
-    if (k === "sound") store.set("uketab.drill.sound", el.checked);
-    if (k === "mic") store.set("uketab.drill.mic", el.checked);
+    if (k === "pair") store.set(skey("drill.pair"), el.value);
+    if (k === "bpm") store.set(skey("drill.bpm"), +el.value);
+    if (k === "beats") store.set(skey("drill.beats"), +el.value);
+    if (k === "sound") store.set(skey("drill.sound"), el.checked);
+    if (k === "mic") store.set(skey("drill.mic"), el.checked);
     if (!this.run) this.render();
   }
 

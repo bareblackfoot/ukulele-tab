@@ -5,7 +5,7 @@ GitHub Pages의 악보 페이지가 이 PC에 맡기는 일을 처리함.
 | 하는 일 | 주소 (127.0.0.1:47615) |
 |---|---|
 | 유튜브 채보 작업: Claude Code(`claude -p`)에게 넘김. Claude가 한도면 Claude 없이 기본 설정으로 채보함 | `POST /jobs`, `GET /jobs`, `GET /jobs/<id>`, `GET /jobs/<id>/result` |
-| 내 악보: 구글 드라이브 `2.취미생활\우쿨렐레\악보` 폴더의 악보 목록·열기·저장(덮어쓸 때 이전판 폴더에 보관) | `GET /library`, `GET /library/<파일>`, `POST /library` |
+| 내 악보: 구글 드라이브 `2.취미생활\우쿨렐레\악보` 폴더(기타 사이트는 `X-Instrument: guitar` 머리글·본문 `inst`로 `2.취미생활\기타\악보`)의 악보 목록·열기·저장(덮어쓸 때 이전판 폴더에 보관). 로그인·기록은 두 사이트가 같이 씀(기록의 `inst`로 나눠 보여 줌) | `GET /library`, `GET /library/<파일>`, `POST /library` |
 | 로그인과 게임 기록: `2.취미생활\우쿨렐레\기록` 폴더(users.json, sessions.json, results/<아이디>.json) | `POST /auth/signup·login·logout·pin`, `POST /records/save·list` |
 
 ## 실행

@@ -1,8 +1,9 @@
 // Chord diagram as SVG markup.
-// "h" (horizontal, the layout used by many Korean beginner sheets): nut on the left, A string on top, G at the bottom.
-// "v" (vertical chord box): nut on top, strings G C E A from left to right.
+// "h" (horizontal, the layout used by many Korean beginner sheets): nut on the left, the highest string on top
+// (ukulele A, guitar high E). "v" (vertical chord box): nut on top, string 0 on the left (ukulele G, guitar low E).
 
 import { chordShape } from "./chords.js";
+import { tuningOf } from "./instrument.js";
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -14,6 +15,8 @@ export function diagramSVG(name, { tuning = "standard", custom = null, orient = 
     return `<svg class="diag unknown ${cls}" viewBox="0 0 80 40" role="img" aria-label="${esc(name)} (모르는 코드)">
       <text x="40" y="24" text-anchor="middle" font-size="12">${esc(name)}?</text></svg>`;
   }
+  const n = sh.frets.length;
+  const last = n - 1;
   const pressed = sh.frets.filter((f) => f > 0);
   const hi = pressed.length ? Math.max(...pressed) : 0;
   const lo = pressed.length ? Math.min(...pressed) : 0;
@@ -22,17 +25,16 @@ export function diagramSVG(name, { tuning = "standard", custom = null, orient = 
   const nut = start === 1;
   const H = orient === "h";
   const len = size;               // along the frets
-  const wid = size * 0.62;        // across the strings
+  const wid = size * (n > 4 ? 0.82 : 0.62); // across the strings
   const cell = len / nFrets;
-  const gap = wid / 3;
+  const gap = wid / last;
   const r = Math.min(cell, gap) * 0.36;
   const padL = H ? 10 : Math.max(8, r + 3), padT = title ? 18 : Math.max(6, r + 2);
   const W = H ? padL + len + 8 : padL * 2 + wid;
   const Ht = H ? padT + wid + Math.max(8, r + 3) : padT + len + 10;
-  // string index 0..3 = G C E A
   const pos = (s, fretIdx) => {
     const along = (fretIdx - 0.5) * cell;
-    return H ? [padL + along, padT + (3 - s) * gap] : [padL + s * gap, padT + along];
+    return H ? [padL + along, padT + (last - s) * gap] : [padL + s * gap, padT + along];
   };
   let g = "";
   if (title) {
@@ -40,7 +42,7 @@ export function diagramSVG(name, { tuning = "standard", custom = null, orient = 
       ? `<text class="dn" x="${padL + len / 2}" y="${padT - 6}" text-anchor="middle">${esc(name)}</text>`
       : `<text class="dn" x="${padL + wid / 2}" y="${padT - 6}" text-anchor="middle">${esc(name)}</text>`;
   }
-  for (let s = 0; s < 4; s++) {
+  for (let s = 0; s < n; s++) {
     g += H
       ? `<line class="ds" x1="${padL}" y1="${padT + s * gap}" x2="${padL + len}" y2="${padT + s * gap}"/>`
       : `<line class="ds" x1="${padL + s * gap}" y1="${padT}" x2="${padL + s * gap}" y2="${padT + len}"/>`;
@@ -64,7 +66,7 @@ export function diagramSVG(name, { tuning = "standard", custom = null, orient = 
   }
   sh.frets.forEach((f, s) => {
     if (f < 0) {
-      const [x, y] = H ? [padL - 6, padT + (3 - s) * gap] : [padL + s * gap, padT - 4];
+      const [x, y] = H ? [padL - 6, padT + (last - s) * gap] : [padL + s * gap, padT - 4];
       g += `<text class="dx" x="${x}" y="${y + 3}" text-anchor="middle">×</text>`;
       return;
     }
@@ -77,5 +79,6 @@ export function diagramSVG(name, { tuning = "standard", custom = null, orient = 
       g += `<text class="dfg" x="${x}" y="${y + r * 0.42}" text-anchor="middle" font-size="${r * 1.25}">${fg}</text>`;
     }
   });
-  return `<svg class="diag ${cls}" viewBox="0 0 ${W} ${Ht}" width="${W}" height="${Ht}" role="img" aria-label="${esc(name)} 코드: ${sh.frets.join(" ")}">${g}</svg>`;
+  const frets = sh.frets.map((f) => (f < 0 ? "x" : f)).join(" ");
+  return `<svg class="diag ${cls}" viewBox="0 0 ${W} ${Ht}" width="${W}" height="${Ht}" role="img" aria-label="${esc(name)} 코드: ${frets} (${tuningOf(tuning).names.join(" ")})">${g}</svg>`;
 }

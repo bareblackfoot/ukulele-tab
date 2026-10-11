@@ -1,21 +1,20 @@
 // Grid editor (similar to the SPRED editor): one column per step, rows for tempo, meter, sections,
-// chords, lyrics and the four strings. Click a cell, then type.
+// chords, lyrics and the strings (highest on top). Click a cell, then type.
 
 import { computeBars, barAt } from "./model.js";
 import { parseChord } from "./chords.js";
+import { tuningOf, INST } from "./instrument.js";
 
-const ROWS = [
+const rowsFor = (tuning) => [
   { id: "ruler", label: "마디", h: 20 },
   { id: "tempo", label: "BPM", h: 20 },
   { id: "meter", label: "박자", h: 20 },
   { id: "section", label: "구간", h: 20 },
   { id: "chord", label: "코드", h: 26 },
   { id: "lyric", label: "가사", h: 24 },
-  { id: "s3", label: "A", h: 22, string: 3 },
-  { id: "s2", label: "E", h: 22, string: 2 },
-  { id: "s1", label: "C", h: 22, string: 1 },
-  { id: "s0", label: "G", h: 22, string: 0 },
+  ...tuningOf(tuning).names.map((label, s) => ({ id: `s${s}`, label, h: 22, string: s })).reverse(),
 ];
+let ROWS = rowsFor(INST.defaultTuning);
 const LABEL_W = 52;
 const TRACK_COLORS = ["#1f6fd1", "#2b8a3e", "#9c36b5", "#e67700"];
 
@@ -79,6 +78,8 @@ export class Editor {
 
   setScore(score) {
     this.score = score;
+    ROWS = rowsFor(score.tuning);
+    if (this.sel.row >= ROWS.length) this.sel.row = 4;
     this.bars = computeBars(score);
     if (this.track >= score.tracks.length) this.track = 0;
     const sel = this.root.querySelector(".ed-track");

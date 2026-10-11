@@ -1,4 +1,7 @@
 // Client for the local bridge (bridge/bridge.py) that runs Claude on this PC to transcribe a YouTube video.
+// One bridge serves both sites; my library is a folder per instrument (X-Instrument).
+
+import { INST } from "./instrument.js";
 
 const KEY = "uketab.bridge";
 // on other devices (iPad) the page reaches the bridge through a Cloudflare tunnel; the PC publishes the
@@ -70,8 +73,8 @@ export const bridge = {
   submit: (req) => call("/jobs", { method: "POST", body: req }),
   cancel: (id) => call(`/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
   // my library needs the owner's login session
-  library: (session) => call("/library", { headers: { "X-Session": session || "" } }),
-  libraryGet: (file, session) => call(`/library/${encodeURIComponent(file)}`, { headers: { "X-Session": session || "" } }),
-  librarySave: (file, score, session) => call("/library", { method: "POST", body: { file, score, session } }),
+  library: (session) => call("/library", { headers: { "X-Session": session || "", "X-Instrument": INST.id } }),
+  libraryGet: (file, session) => call(`/library/${encodeURIComponent(file)}`, { headers: { "X-Session": session || "", "X-Instrument": INST.id } }),
+  librarySave: (file, score, session) => call("/library", { method: "POST", body: { file, score, session, inst: INST.id } }),
   post: (path, body) => call(path, { method: "POST", body }),
 };

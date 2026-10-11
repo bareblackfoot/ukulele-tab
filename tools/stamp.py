@@ -1,7 +1,7 @@
 """Stamp a version on every script and the stylesheet in index.html so browsers fetch new files after a push.
 GitHub Pages lets browsers keep files for 10 minutes; a changed version string means a new address.
 
-    python tools/stamp.py      (run before each commit)
+    python tools/stamp.py [site folder]     (run before each commit; default: this repository)
 
 The version is a hash of the files' contents, so it only changes when they do. Module imports inside the
 scripts ("./model.js") are mapped to versioned addresses by an import map in index.html.
@@ -9,9 +9,10 @@ scripts ("./model.js") are mapped to versioned addresses by an import map in ind
 import hashlib
 import json
 import re
+import sys
 from pathlib import Path
 
-root = Path(__file__).resolve().parent.parent
+root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parent.parent
 js = sorted((root / "js").glob("*.js"))
 h = hashlib.sha1()
 for f in js + [root / "css" / "app.css"]:

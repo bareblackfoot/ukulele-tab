@@ -1,6 +1,7 @@
 // Chord practice for the open song: the chords it needs, the chord changes it uses, and short drill scores.
 
 import { chordShape, shapeDifficulty } from "./chords.js";
+import { skey } from "./instrument.js";
 
 const playable = (name, s) => name !== "N.C." && !!chordShape(name, s.tuning, s.chordShapes);
 
@@ -32,5 +33,5 @@ export function songTransitions(s) {
 }
 
 export function songKey(s) {
-  return `uketab.drill.${s.youtube.videoId || ""}.${(s.meta.title || "").slice(0, 60)}`;
+  return skey(`drill.${s.youtube.videoId || ""}.${(s.meta.title || "").slice(0, 60)}`);
 }

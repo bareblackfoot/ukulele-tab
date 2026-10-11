@@ -9,7 +9,8 @@ import { StrumGame, showStrumResult, ClickBleed } from "./strumgame.js";
 import { CLICK_HZ } from "./audio.js";
 import { songChords } from "./drills.js";
 import { diagramSVG } from "./diagram.js";
-import { chordShape, TUNINGS } from "./chords.js";
+import { chordShape } from "./chords.js";
+import { INST, tuningOf, instOf, skey } from "./instrument.js";
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const store = {
@@ -50,10 +51,10 @@ export class StrumView {
   }
 
   // ---------------------------------------------------------------- settings
-  pattern() { return STRUMS.find((p) => p.id === store.get("uketab.strum.pattern", "calypso")) || STRUMS[0]; }
-  bpm() { return store.get("uketab.strum.bpm", 70); }
-  opt(k, d) { return store.get(`uketab.strum.${k}`, d); }
-  bests() { return store.get("uketab.strum.best", {}); }
+  pattern() { return STRUMS.find((p) => p.id === store.get(skey("strum.pattern"), "calypso")) || STRUMS[0]; }
+  bpm() { return store.get(skey("strum.bpm"), 70); }
+  opt(k, d) { return store.get(skey(`strum.${k}`), d); }
+  bests() { return store.get(skey("strum.best"), {}); }
 
   progressions() {
     const list = PROGRESSIONS.slice();
@@ -66,17 +67,17 @@ export class StrumView {
   }
   prog() {
     const all = this.progressions();
-    return all.find((p) => p.id === store.get("uketab.strum.prog", "C")) || all[0];
+    return all.find((p) => p.id === store.get(skey("strum.prog"), "C")) || all[0];
   }
 
   // shape, tuning and capo for a chord of the chosen progression (the open song's own shapes for "이 곡")
   voicing(name, prog) {
     const s = this.score;
-    const tuning = prog.song && s ? s.tuning : "standard";
+    const tuning = prog.song && s ? s.tuning : INST.defaultTuning;
     const custom = prog.song && s ? s.chordShapes : null;
     const capo = prog.song && s ? s.capo || 0 : 0;
     const sh = chordShape(name, tuning, custom);
-    const tun = (TUNINGS[tuning] || TUNINGS.standard).strings;
+    const tun = tuningOf(tuning).strings;
     return { sh, midis: sh ? sh.frets.map((f, i) => (f < 0 ? null : tun[i] + f + capo)) : null, opts: { tuning, custom, orient: this.d.settings.orient } };
   }
 
@@ -204,7 +205,7 @@ export class StrumView {
       this.starting = false;
       // no microphone: a game goes on with taps (practice.ensureMic says so), the timing check stops here
       if (!ok && !game) return;
-      if (!ok) store.set("uketab.strum.ginput", "keys");
+      if (!ok) store.set(skey("strum.ginput"), "keys");
       else { pr.mic.an.ignoreTones(CLICK_HZ); pr.mic.an.takeOnsets(); }
     }
     const micOk = useMic && !!pr.mic;
@@ -214,7 +215,7 @@ export class StrumView {
     const r = {
       p, prog, useMic: micOk && !game, bpm: this.bpm(), bpm0: this.bpm(), gate: micOk ? new ClickBleed() : null,
       bars: [], next: { bar: 0, slot: 0 }, curBar: -1, curSlot: -1,
-      strokes: [], rounds: [], voices: [null, null, null, null], timers: [],
+      strokes: [], rounds: [], voices: [], timers: [],
       firstBar: t0 + 4 * beat,
     };
     if (game) {
@@ -323,11 +324,13 @@ export class StrumView {
     }
     const { midis } = this.voicing(b.chord, r.prog);
     if (!midis) return;
-    const order = c === "D" ? [0, 1, 2, 3] : [3, 2, 1, 0];
+    const order = midis.map((_, i) => i);
+    if (c !== "D") order.reverse();
+    const gap = instOf(this.voicing(b.chord, r.prog).opts.tuning).strumGap;
     const vel = c === "U" ? 0.13 : onBeat ? 0.24 : 0.19;
     order.forEach((s, k) => {
       if (midis[s] === null) return;
-      const t = when + k * 0.012;
+      const t = when + k * gap;
       const old = r.voices[s];
       if (old && old.end > t) old.stop(t);
       r.voices[s] = eng.note(midis[s], t, b.beat * 1.8, vel, eng.chordBus);
@@ -448,7 +451,7 @@ export class StrumView {
     const all = this.bests();
     const old = all[id] || {};
     all[id] = { ...old, ...rec, best: Math.max(old.best || 0, rec.best || 0) || undefined };
-    store.set("uketab.strum.best", all);
+    store.set(skey("strum.best"), all);
   }
 
   stop() {
@@ -471,7 +474,7 @@ export class StrumView {
     const item = e.target.closest("[data-pat]");
     if (item) {
       if (this.run) return;
-      store.set("uketab.strum.pattern", item.dataset.pat);
+      store.set(skey("strum.pattern"), item.dataset.pat);
       this.lastRun = null;
       this.render();
       return;
@@ -480,11 +483,11 @@ export class StrumView {
     if (!b) return;
     const act = b.dataset.sv;
     if (act === "go") { if (this.run) { this.stop(); this.render(); } else this.start(); }
-    else if (act === "game") { store.set("uketab.strum.game", !this.opt("game", false)); this.lastRun = null; this.render(); }
-    else if (act === "gmode") { store.set("uketab.strum.gmode", b.dataset.v); this.render(); }
+    else if (act === "game") { store.set(skey("strum.game"), !this.opt("game", false)); this.lastRun = null; this.render(); }
+    else if (act === "gmode") { store.set(skey("strum.gmode"), b.dataset.v); this.render(); }
     else if (act === "slower" || act === "faster") {
       const v = Math.max(MIN_BPM, Math.min(MAX_BPM, this.bpm() + (act === "faster" ? 5 : -5)));
-      store.set("uketab.strum.bpm", v);
+      store.set(skey("strum.bpm"), v);
       if (this.run) {
         // from the next bar that is not scheduled yet
         const r = this.run;
@@ -500,10 +503,10 @@ export class StrumView {
     const el = e.target.closest("[data-sv]");
     if (!el) return;
     const k = el.dataset.sv;
-    if (k === "prog") store.set("uketab.strum.prog", el.value);
-    if (k === "gbars") store.set("uketab.strum.gbars", +el.value);
-    if (k === "ginput") store.set("uketab.strum.ginput", el.value);
-    if (k === "sound" || k === "soundMic" || k === "metro" || k === "faster4" || k === "mic") store.set(`uketab.strum.${k}`, el.checked);
+    if (k === "prog") store.set(skey("strum.prog"), el.value);
+    if (k === "gbars") store.set(skey("strum.gbars"), +el.value);
+    if (k === "ginput") store.set(skey("strum.ginput"), el.value);
+    if (k === "sound" || k === "soundMic" || k === "metro" || k === "faster4" || k === "mic") store.set(skey(`strum.${k}`), el.checked);
     if (!this.run) this.render();
   }
 

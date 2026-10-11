@@ -1,7 +1,8 @@
 // Sound: plucked-string synthesis (Karplus-Strong), chord strums, metronome, and a look-ahead scheduler.
 
 import { TimeMap, computeBars, barAt, chordIndexAt, strumAt } from "./model.js";
-import { chordShape, TUNINGS } from "./chords.js";
+import { chordShape } from "./chords.js";
+import { INST, tuningOf, instOf } from "./instrument.js";
 
 const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
@@ -85,10 +86,11 @@ export class Engine {
     const buf = ctx.createBuffer(1, len, sr);
     const out = buf.getChannelData(0);
     const ring = new Float32Array(N);
-    // soft noise burst: averaged twice so the attack is warm like a nylon string
+    // soft noise burst: smoothed so the attack is warm like a nylon string; a steel string keeps more of it
+    const smooth = INST.nylon ? 0.6 : 0.3;
     let prev = 0;
-    for (let i = 0; i < N; i++) { const r = Math.random() * 2 - 1; prev = 0.6 * prev + 0.4 * r; ring[i] = prev; }
-    const decay = Math.min(0.9985, 0.9965 + (60 - Math.min(midi, 90)) * 0.00004);
+    for (let i = 0; i < N; i++) { const r = Math.random() * 2 - 1; prev = smooth * prev + (1 - smooth) * r; ring[i] = prev; }
+    const decay = Math.min(INST.nylon ? 0.9985 : 0.999, (INST.nylon ? 0.9965 : 0.9972) + (60 - Math.min(midi, 90)) * 0.00004);
     let idx = 0;
     for (let i = 0; i < len; i++) {
       const a = ring[idx], b = ring[(idx + 1) % N];
@@ -125,12 +127,14 @@ export class Engine {
     };
   }
 
-  // strum a chord given as MIDI pitches in G-C-E-A order (null = string not played)
+  // strum a chord given as MIDI pitches in string order (null = string not played); down starts at string 0
   strumMidis(midis, when = null, dir = "D", vel = 0.3) {
     this.ensure();
     const t0 = when ?? this.ctx.currentTime + 0.03;
-    const order = dir === "D" ? [0, 1, 2, 3] : [3, 2, 1, 0];
-    order.forEach((s, k) => { if (midis[s] !== null && midis[s] !== undefined) this.note(midis[s], t0 + k * 0.015, 1.6, vel, this.chordBus); });
+    const order = midis.map((_, i) => i);
+    if (dir !== "D") order.reverse();
+    const gap = INST.strumGap * 1.25;
+    order.forEach((s, k) => { if (midis[s] !== null && midis[s] !== undefined) this.note(midis[s], t0 + k * gap, 1.6, vel, this.chordBus); });
   }
 
   click(when, accent) {
@@ -216,8 +220,8 @@ export class Player {
     this.startCtx = startAt ?? ctx.currentTime + 0.06;
     this.startScoreT = this.tm.colToTime(col);
     this.nextCol = Math.ceil(col - 1e-6);
-    this.melodyVoices = [null, null, null, null];
-    this.chordVoices = [null, null, null, null];
+    this.melodyVoices = [];
+    this.chordVoices = [];
     clearInterval(this.timer);
     this.timer = setInterval(() => this.tick(), 25);
     this.tick();
@@ -247,8 +251,8 @@ export class Player {
   silence() {
     const t = this.engine.ctx ? this.engine.ctx.currentTime : 0;
     for (const v of [...(this.melodyVoices || []), ...(this.chordVoices || [])]) if (v) v.stop(t);
-    this.melodyVoices = [null, null, null, null];
-    this.chordVoices = [null, null, null, null];
+    this.melodyVoices = [];
+    this.chordVoices = [];
   }
 
   colTime(col) {
@@ -262,7 +266,7 @@ export class Player {
     const horizon = ctx.currentTime + 0.18;
     const s = this.score;
     const spb = s.stepsPerBeat;
-    const tuning = (TUNINGS[s.tuning] || TUNINGS.standard).strings;
+    const tuning = tuningOf(s.tuning).strings;
     let guard = 0;
     while (this.colTime(this.nextCol) < horizon && guard++ < 400) {
       const col = this.nextCol;
@@ -322,11 +326,13 @@ export class Player {
   strum(name, dir, when, vel, tuning) {
     const sh = chordShape(name, this.score.tuning, this.score.chordShapes);
     if (!sh) return;
-    const order = dir === "D" ? [0, 1, 2, 3] : [3, 2, 1, 0];
+    const order = sh.frets.map((_, i) => i);
+    if (dir !== "D") order.reverse();
+    const gap = instOf(this.score.tuning).strumGap;
     const beat = 60 / this.tm.bpmAt(this.position()) / this.rate;
     order.forEach((s, k) => {
       if (sh.frets[s] < 0) return;
-      const t = when + k * 0.012;
+      const t = when + k * gap;
       const old = this.chordVoices[s];
       if (old && old.end > t) old.stop(t);
       this.chordVoices[s] = this.engine.note(tuning[s] + (this.score.capo || 0) + sh.frets[s], t, beat * 1.8, vel * (dir === "U" ? 0.8 : 1), this.engine.chordBus);

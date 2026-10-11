@@ -2,10 +2,13 @@
 // a Google Drive folder). Results made before logging in are uploaded once after login.
 
 import { bridge, bridgeSettings, isRemote } from "./bridge.js";
+import { INST, skey } from "./instrument.js";
 
-const LOCAL = "uketab.records";
+// results stay apart per instrument (inst field); the login is shared by the ukulele and the guitar site
+const LOCAL = skey("records");
 const SESSION = "uketab.session";
-const PENDING = "uketab.records.pending";
+const PENDING = skey("records.pending");
+const mine = (r) => (r.inst || "ukulele") === INST.id;
 
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (_) { return d; } },
@@ -54,6 +57,7 @@ export const records = {
 
   // keep a result; returns the previous best score for the same song and judging setup (or null)
   add(r) {
+    r = { ...r, inst: INST.id };
     const all = this.local();
     const same = all.filter((x) => x.song === r.song && x.target === r.target && x.mode === r.mode);
     const prevBest = same.length ? Math.max(...same.map((x) => x.score)) : null;
@@ -79,13 +83,14 @@ export const records = {
 
   // everything for the dashboard: the account's results when logged in, merged with this browser's
   async all() {
-    const local = this.local();
+    const local = this.local().filter(mine);
     const s = this.session();
     if (!s) return { results: local, source: "browser" };
     try {
       const d = await post("/records/list", { session: s.session });
-      const seen = new Set(d.results.map((r) => `${r.time}|${r.song}`));
-      const merged = d.results.concat(local.filter((r) => !seen.has(`${r.time}|${r.song}`)));
+      const theirs = d.results.filter(mine);
+      const seen = new Set(theirs.map((r) => `${r.time}|${r.song}`));
+      const merged = theirs.concat(local.filter((r) => !seen.has(`${r.time}|${r.song}`)));
       merged.sort((a, b) => a.time - b.time);
       return { results: merged, source: "account" };
     } catch (err) {

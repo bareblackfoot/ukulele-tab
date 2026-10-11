@@ -1,3 +1,5 @@
+import { INST } from "./instrument.js";
+
 // Strum patterns for "스트럼 연습", easiest first. Slots use the score's notation:
 // D down, U up, X chuck (muted strum), - no strum (the arm still moves).
 //   beats: beats in a bar, sub: slots in a beat (2 = 8ths, 3 = triplets / 6/8), swing: 2nd 8th played late (shuffle)
@@ -10,7 +12,7 @@ export const STRUMS = [
   { id: "dddudu", name: "다운 다운 다운업 다운업", slots: "D-D-DUDU", beats: 4, sub: 2,
     desc: "1·2박은 다운만, 3·4박은 다운·업" },
   { id: "calypso", name: "calypso (island strum)", slots: "D-DU-UDU", beats: 4, sub: 2,
-    desc: "우쿨렐레에서 가장 많이 쓰는 패턴. 1박 &와 3박은 줄을 치지 않고 팔만 움직임" },
+    desc: "가장 많이 쓰는 패턴 중 하나. 1박 &와 3박은 줄을 치지 않고 팔만 움직임" },
   { id: "waltz", name: "waltz 3/4", slots: "D-DUDU", beats: 3, sub: 2,
     desc: "3/4박자. 1박은 다운, 2·3박은 다운·업" },
   { id: "shuffle", name: "shuffle 다운·업", slots: "DUDUDUDU", beats: 4, sub: 2, swing: true,
@@ -53,14 +55,5 @@ export function slotBeat(p, i) {
   return b + k / p.sub;
 }
 
-// chord choices: one chord, or a progression with one chord per bar
-export const PROGRESSIONS = [
-  { id: "C", label: "C", chords: ["C"] },
-  { id: "Am", label: "Am", chords: ["Am"] },
-  { id: "F", label: "F", chords: ["F"] },
-  { id: "G", label: "G", chords: ["G"] },
-  { id: "C-Am-F-G", label: "C → Am → F → G", chords: ["C", "Am", "F", "G"] },
-  { id: "C-G-Am-F", label: "C → G → Am → F", chords: ["C", "G", "Am", "F"] },
-  { id: "F-G-Em-Am", label: "F → G → Em → Am", chords: ["F", "G", "Em", "Am"] },
-  { id: "G-Em-C-D", label: "G → Em → C → D", chords: ["G", "Em", "C", "D"] },
-];
+// chord choices: one chord, or a progression with one chord per bar (js/instrument.js)
+export const PROGRESSIONS = INST.progressions;

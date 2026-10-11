@@ -1,6 +1,6 @@
-import { newScore, loadAnyFormat, normalizeScore, toJSON, TimeMap, computeBars, barAt, midiOf } from "./model.js";
-import { transposeChord, TUNINGS, chordShape, shapeDifficulty } from "./chords.js";
-import { melodyToTab } from "./fingering.js";
+import { newScore, loadAnyFormat, normalizeScore, toJSON, TimeMap, computeBars, barAt, retune } from "./model.js";
+import { transposeChord, TUNINGS, capoChoices } from "./chords.js";
+import { INST, INSTRUMENTS, tuningsOf, skey } from "./instrument.js";
 import { SheetView } from "./sheet.js";
 import { ChordBar } from "./chordbar.js";
 import { Editor } from "./editor.js";
@@ -26,7 +26,7 @@ const store = {
 };
 
 const DEFAULT_SETTINGS = { miniDiagrams: true, showTab: false, follow: true, orient: "h", upcoming: 4, barsPerLine: 0 };
-const settings = { ...DEFAULT_SETTINGS, ...store.get("uketab.settings", {}) };
+const settings = { ...DEFAULT_SETTINGS, ...store.get(skey("settings"), {}) };
 
 let score = newScore();
 let undoStack = [], redoStack = [];
@@ -107,7 +107,7 @@ function setScore(s, { keepHistory = false, msg } = {}) {
   $(".yt-url").value = score.youtube.videoId || "";
   $(".yt-offset").value = String(score.youtube.offsetMs || 0);
   if (!$(".yt").hidden && score.youtube.videoId) yt.load(score.youtube.videoId);
-  document.title = (score.meta.title ? score.meta.title + " · " : "") + "우쿨렐레 코드 악보";
+  document.title = (score.meta.title ? score.meta.title + " · " : "") + INST.title;
   updatePosition(player.position());
   if (msg) status(msg);
   autosave();
@@ -115,7 +115,7 @@ function setScore(s, { keepHistory = false, msg } = {}) {
 
 // where the open score came from, so a later visit opens the newest version of an example or my-library sheet
 // instead of this browser's old copy (unless it was edited here)
-const SRC = "uketab.lastSource";
+const SRC = skey("lastSource");
 function rememberSource(kind, file) { store.set(SRC, kind ? { kind, file, edited: false } : null); }
 
 function mutate(fn, label = "편집") {
@@ -146,7 +146,7 @@ function redo() {
 let saveTimer = null;
 function autosave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => store.set("uketab.last", JSON.parse(toJSON(score))), 400);
+  saveTimer = setTimeout(() => store.set(skey("last"), JSON.parse(toJSON(score))), 400);
 }
 
 // ---------------------------------------------------------------- playback
@@ -290,7 +290,7 @@ $(".yt-close").addEventListener("click", () => toggleYT(false));
 
 // the video box: drag it by its title, make it smaller or bigger; place and size are remembered in this browser
 const YT_WIDTHS = [200, 280, 420, 560, 720];
-const ytBox = { ...store.get("uketab.ytbox", {}) };
+const ytBox = { ...store.get(skey("ytbox"), {}) };
 function placeYT() {
   const el = $(".yt");
   const w = Math.min(YT_WIDTHS[ytBox.size ?? 2] || 420, window.innerWidth - 16);
@@ -303,7 +303,7 @@ function placeYT() {
 }
 $$(".yt-size").forEach((b) => b.addEventListener("click", () => {
   ytBox.size = Math.max(0, Math.min(YT_WIDTHS.length - 1, (ytBox.size ?? 2) + +b.dataset.step));
-  store.set("uketab.ytbox", ytBox);
+  store.set(skey("ytbox"), ytBox);
   placeYT();
 }));
 $(".yt-more").addEventListener("click", (e) => {
@@ -323,7 +323,7 @@ $(".yt-grip").addEventListener("pointerdown", (e) => {
   const up = () => {
     el.classList.remove("dragging");
     grip.removeEventListener("pointermove", move);
-    store.set("uketab.ytbox", ytBox);
+    store.set(skey("ytbox"), ytBox);
   };
   grip.addEventListener("pointermove", move);
   grip.addEventListener("pointerup", up, { once: true });
@@ -359,7 +359,7 @@ for (const el of $$("[data-set]")) {
   if (el.type === "checkbox") el.checked = !!settings[k]; else el.value = String(settings[k]);
   el.addEventListener("change", () => {
     settings[k] = el.type === "checkbox" ? el.checked : (isNaN(+el.value) ? el.value : +el.value);
-    store.set("uketab.settings", settings);
+    store.set(skey("settings"), settings);
     chordbar.setScore(score, settings);
     sheet.render(score, settings);
     updatePosition(player.position());
@@ -387,11 +387,11 @@ const actions = {
   },
   open: () => $(".file-input").click(),
   save: () => {
-    const name = (score.meta.title || "ukulele").replace(/[\\/:*?"<>|]/g, "_");
+    const name = (score.meta.title || INST.id).replace(/[\\/:*?"<>|]/g, "_");
     const blob = new Blob([toJSON(score)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `${name}.uke.json`;
+    a.download = `${name}${INST.fileExt}`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   },
@@ -426,6 +426,8 @@ const actions = {
   "ly-apply": () => applyLyrics(),
   details: () => openDetails(),
   help: () => window.open("help.html", "_blank", "noopener"),
+  // the ukulele site and the guitar site sit next to each other on GitHub Pages
+  "other-site": () => { location.href = INST.id === "guitar" ? "../ukulele-tab/" : "../guitar-tab/"; },
   transcribe: () => openTranscribe(),
   loop: () => toggleLoop(),
 };
@@ -503,19 +505,19 @@ async function togglePractice(force) {
 
 $(".g-target").addEventListener("change", (e) => {
   practice.target = e.target.value;
-  store.set("uketab.practice.target", practice.target);
+  store.set(skey("practice.target"), practice.target);
   practice.buildTargets();
   practice.rewind(player.position());
 });
 $(".g-input").addEventListener("change", async (e) => {
   practice.input = e.target.value;
-  store.set("uketab.practice.input", practice.input);
+  store.set(skey("practice.input"), practice.input);
   if (practice.on && practice.input === "mic") await practice.ensureMic();
   syncPracticeControls();
 });
 $$(".g-modes [data-mode]").forEach((b) => b.addEventListener("click", () => {
   practice.mode = b.dataset.mode;
-  store.set("uketab.practice.mode", practice.mode);
+  store.set(skey("practice.mode"), practice.mode);
   syncPracticeControls();
 }));
 document.addEventListener("keydown", (e) => {
@@ -526,7 +528,7 @@ document.addEventListener("keydown", (e) => {
 
 function setSync(v) {
   practice.offsetMs = Math.max(-200, Math.min(500, Math.round(v)));
-  store.set("uketab.practice.offset", practice.offsetMs);
+  store.set(skey("practice.offset"), practice.offsetMs);
   syncPracticeControls();
 }
 function openSync() {
@@ -630,8 +632,14 @@ document.addEventListener("keydown", (e) => {
 
 // ---------------------------------------------------------------- files
 
+$("[data-act=other-site]").textContent = INST.id === "guitar" ? "우쿨렐레 악보 사이트로" : "기타 악보 사이트로";
+
+// tuning choices of this site's instrument in every tuning menu
+for (const sel of $$("select[name=tuning]")) sel.innerHTML = tuningsOf(INST.id).map((t) => `<option value="${t.name}">${t.label}</option>`).join("");
+const ownTuning = (t) => (TUNINGS[t] && TUNINGS[t].inst === INST.id ? t : INST.defaultTuning);
+
 const importDlg = $(".dlg-import");
-function askImportOptions(defTuning = "standard") {
+function askImportOptions(defTuning = INST.defaultTuning) {
   return new Promise((resolve) => {
     importDlg.querySelector("[name=tuning]").value = defTuning;
     importDlg.returnValue = "";
@@ -648,17 +656,18 @@ async function openObject(obj, sourceName, opts) {
   rememberSource(null);
   const fname = obj && obj.format && (obj.format.name || obj.format.formatName);
   if ((fname === "spred-sheet" || fname === "ukulele-transcription") && !opts) {
-    opts = await askImportOptions(obj.tuning || "standard");
+    opts = await askImportOptions(ownTuning(obj.tuning));
     if (!opts) return;
   }
   const s = loadAnyFormat(obj, opts || {});
-  if (sourceName && !s.meta.title) s.meta.title = sourceName.replace(/\.(uke\.)?json$/i, "");
+  if (sourceName && !s.meta.title) s.meta.title = sourceName.replace(/\.(uke\.|guitar\.)?json$/i, "");
   setScore(s, { msg: describeImport(s) });
   seek(0);
 }
 
 function describeImport(s) {
   const parts = [];
+  if (s.converted) parts.push(`${INSTRUMENTS[s.converted.from].name} 악보를 ${INST.name} 코드로 옮김${s.converted.capo ? ` (카포 ${s.converted.capo})` : ""}`);
   for (const r of s.importReport || []) {
     const bits = [];
     if (r.shift) bits.push(`멜로디를 ${r.shift > 0 ? "" : "-"}${Math.abs(r.shift / 12)}옥타브 옮김`);
@@ -893,7 +902,7 @@ function applyLyrics() {
 }
 
 async function saveToLibrary() {
-  const def = libraryFile || `${(score.meta.title || "새 악보").replace(/[\\/:*?"<>|]/g, "_")}${score.meta.artist ? " - " + score.meta.artist.replace(/[\\/:*?"<>|]/g, "_") : ""}.uke.json`;
+  const def = libraryFile || `${(score.meta.title || "새 악보").replace(/[\\/:*?"<>|]/g, "_")}${score.meta.artist ? " - " + score.meta.artist.replace(/[\\/:*?"<>|]/g, "_") : ""}${INST.fileExt}`;
   const name = prompt("내 악보함에 저장할 파일 이름", def);
   if (!name) return;
   const file = name.endsWith(".json") ? name : `${name}.json`;
@@ -909,7 +918,8 @@ async function saveToLibrary() {
 
 async function loadExample(file) {
   const obj = await (await fetch(`examples/${file}`)).json();
-  setScore(loadAnyFormat(obj));
+  const s = loadAnyFormat(obj);
+  setScore(s, { msg: describeImport(s) });
   libraryFile = null;
   rememberSource("example", file);
   seek(0);
@@ -931,11 +941,8 @@ function openDetails() {
   f("capo").value = String(score.capo || 0);
   const names = [...new Set(score.chords.map((c) => c.name).filter((c) => c !== "N.C."))];
   // capo positions that make the shapes easiest while the sound stays the same
-  const easiest = [0, 1, 2, 3, 4, 5, 6, 7].map((cp) => {
-    const shift = (score.capo || 0) - cp;
-    const d = names.reduce((a, c) => a + shapeDifficulty(chordShape(transposeChord(c, shift), score.tuning)), 0);
-    return { cp, d };
-  }).sort((a, b) => a.d - b.d).slice(0, 3).map((x) => x.cp);
+  const sounding = score.chords.filter((c) => c.name !== "N.C.").map((c) => transposeChord(c.name, score.capo || 0));
+  const easiest = capoChoices(sounding, score.tuning).slice(0, 3).map((x) => x.capo);
   const hint = () => {
     const k = +f("transpose").value || 0;
     const shift = k - ((+f("capo").value || 0) - (score.capo || 0));
@@ -961,18 +968,8 @@ function openDetails() {
       const vid = parseVideoId(f("video").value);
       s.youtube.videoId = vid;
       s.youtube.offsetMs = Math.round(+f("offset").value || 0);
-      if (k || newTuning !== s.tuning || newCapo !== (s.capo || 0)) {
-        // same sound (plus the transposition); shapes and frets move by the capo change
-        const shapeShift = k - (newCapo - (s.capo || 0));
-        for (const t of s.tracks) {
-          const mel = t.notes.map((n) => ({ col: n.col, len: n.len, midi: midiOf(n, s.tuning, s.capo || 0) + k - newCapo }));
-          t.notes = melodyToTab(mel, newTuning, 0).notes;
-        }
-        s.chords = s.chords.map((c) => ({ ...c, name: c.name === "N.C." ? c.name : transposeChord(c.name, shapeShift) }));
-        if (k && s.meta.key) s.meta.key = transposeChord(s.meta.key, k);
-        s.tuning = newTuning;
-        s.capo = newCapo;
-      }
+      // same sound (plus the transposition); shapes and frets move by the capo change
+      if (k || newTuning !== s.tuning || newCapo !== (s.capo || 0)) retune(s, newTuning, newCapo, k, 0);
     }, k ? `조옮김 ${k > 0 ? "+" : ""}${k}` : "곡 정보 바꿈");
   }, { once: true });
 }
@@ -1019,7 +1016,7 @@ async function loadJob(id) {
   try {
     const obj = await bridge.result(id);
     txDlg.close();
-    await openObject(obj, obj.meta && obj.meta.title, { tuning: obj.tuning || "standard" });
+    await openObject(obj, obj.meta && obj.meta.title, { tuning: ownTuning(obj.tuning) });
     toggleYT(true);
   } catch (err) {
     status(`결과를 못 엶: ${err.message}`, true);
@@ -1127,7 +1124,7 @@ window.addEventListener("resize", () => { if (!editing) { sheet.render(score, se
   try {
     if (params.get("job")) { await loadJob(params.get("job")); return; }
     if (params.get("example")) { await loadExample(params.get("example") + ".json"); return; }
-    const last = store.get("uketab.last", null);
+    const last = store.get(skey("last"), null);
     const src = store.get(SRC, null);
     if (src && !src.edited && src.kind === "example") { await loadExample(src.file); return; }
     if (last) setScore(loadAnyFormat(last));

@@ -3,11 +3,11 @@
 
 import { computeBars, distinctChords, barAt } from "./model.js";
 import { diagramSVG } from "./diagram.js";
+import { tuningOf } from "./instrument.js";
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const STRUM_ARROW = { D: "↓", U: "↑", "-": "·", x: "×", X: "×" };
 const strumArrows = (p) => p.split("").map((c) => STRUM_ARROW[c] || c).join(" ");
-const STRING_LABEL = ["G", "C", "E", "A"];
 export const SHEET_MAX_W = 980; // lines get hard to follow when they run across a wide monitor
 
 export class SheetView {
@@ -41,9 +41,10 @@ export class SheetView {
     for (let i = i0; i < bars.length; i += perLine) lines.push(bars.slice(i === i0 && i0 ? 0 : i, i + perLine));
     if (!lines.length) lines.push(bars);
     const showTab = settings.showTab && score.tracks.some((t) => !t.hidden && t.notes.length);
+    const names = tuningOf(score.tuning).names, nStr = names.length, top = nStr - 1;
     const staffY = 50, lyricY = staffY + 19;
     const tabTop = lyricY + 14, tabGap = 9;
-    const H = showTab ? tabTop + tabGap * 3 + 12 : lyricY + 10;
+    const H = showTab ? tabTop + tabGap * top + 12 : lyricY + 10;
     const tuning = score.tuning;
     const custom = score.chordShapes;
     const meterAt = new Map(score.meter.map((m) => [m.col, m.beats]));
@@ -63,7 +64,7 @@ export class SheetView {
         <span>${Math.round(bpm * 10) / 10} BPM${score.tempo.length > 1 ? " (바뀜)" : ""}</span>
         <span>${Math.round(mainLen / score.stepsPerBeat)}/4</span>
         ${score.capo ? `<span class="capo">카포 ${score.capo}</span>` : ""}
-        <span>${tuning === "low-g" ? "Low-G" : "High-G"}</span>
+        <span>${esc(tuningOf(tuning).short)}</span>
         ${pat ? `<span title="스트럼 패턴 (8분음표 단위, ↓ 다운 ↑ 업 · 쉼)">${esc(pat)}</span>` : ""}
       </div>
       ${chordsUsed.length ? `<div class="all-chords" aria-label="이 곡의 코드">${chordsUsed.map((c) =>
@@ -87,10 +88,10 @@ export class SheetView {
       let under = "";   // bar highlight boxes go below the lines so the lines stay visible
       g += `<line class="staff" x1="${left}" y1="${staffY}" x2="${lineEnd}" y2="${staffY}"/>`;
       if (showTab) {
-        for (let s = 0; s < 4; s++) {
+        for (let s = 0; s < nStr; s++) {
           const y = tabTop + s * tabGap;
           g += `<line class="tabline" x1="${left}" y1="${y}" x2="${lineEnd}" y2="${y}"/>`;
-          g += `<text class="tablab" x="${left - 4}" y="${y + 3}" text-anchor="end">${STRING_LABEL[3 - s]}</text>`;
+          g += `<text class="tablab" x="${left - 4}" y="${y + 3}" text-anchor="end">${names[top - s]}</text>`;
         }
       }
       let lyricEnd = -1e9;
@@ -99,7 +100,7 @@ export class SheetView {
         this.geo[bar.index] = { line: L, x0, x1 };
         const xOf = (col) => x0 + 7 + ((col - bar.start) / bar.len) * (barW - 14);
         under += `<rect class="bar-hl" data-bar="${bar.index}" x="${x0}" y="${staffY - 44}" width="${barW}" height="${H - staffY + 44 - 2}"/>`;
-        const yb0 = staffY - 9, yb1 = showTab ? tabTop + tabGap * 3 : staffY + 9;
+        const yb0 = staffY - 9, yb1 = showTab ? tabTop + tabGap * top : staffY + 9;
         g += `<line class="barline" x1="${x1}" y1="${yb0}" x2="${x1}" y2="${yb1}"/>`;
         if (k === 0) g += `<line class="barline" x1="${x0}" y1="${yb0}" x2="${x0}" y2="${yb1}"/>`;
         if (meterAt.has(bar.start) || (bar.index === 0)) {
@@ -149,7 +150,7 @@ export class SheetView {
             while (ni[ti] < ns.length && ns[ni[ti]].col < bar.start) ni[ti]++;
             for (let j = ni[ti]; j < ns.length && ns[j].col < bar.start + bar.len; j++) {
               const n = ns[j];
-              const x = xOf(n.col), y = tabTop + (3 - n.string) * tabGap;
+              const x = xOf(n.col), y = tabTop + (top - n.string) * tabGap;
               const txt = String(n.fret);
               g += `<rect class="tabbg" x="${x - 1}" y="${y - 5}" width="${txt.length * 6 + 2}" height="10"/>`;
               g += `<text class="tabnum t${ti}" x="${x}" y="${y + 3.5}">${txt}</text>`;

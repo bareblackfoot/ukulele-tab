@@ -6,9 +6,9 @@
 <title>우쿨렐레 코드 악보</title>
 <meta name="description" content="유튜브에 맞춰 재생하는 우쿨렐레 코드·TAB 악보. 위쪽에 다음 코드 운지가 뜸.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3v13' stroke='%23a8743f' stroke-width='3'/%3E%3Ccircle cx='16' cy='22' r='8' fill='%23a8743f'/%3E%3Ccircle cx='16' cy='22' r='2.5' fill='%23fff'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/app.css?v=9eedaef16e">
+<link rel="stylesheet" href="css/app.css?v=69e9eb253a">
 <!-- importmap -->
-<script type="importmap">{"imports":{"./js/audio.js":"./js/audio.js?v=9eedaef16e","./js/bridge.js":"./js/bridge.js?v=9eedaef16e","./js/chordbar.js":"./js/chordbar.js?v=9eedaef16e","./js/chords.js":"./js/chords.js?v=9eedaef16e","./js/dashboard.js":"./js/dashboard.js?v=9eedaef16e","./js/diagram.js":"./js/diagram.js?v=9eedaef16e","./js/drills.js":"./js/drills.js?v=9eedaef16e","./js/drillview.js":"./js/drillview.js?v=9eedaef16e","./js/dsp.js":"./js/dsp.js?v=9eedaef16e","./js/editor.js":"./js/editor.js?v=9eedaef16e","./js/fingering.js":"./js/fingering.js?v=9eedaef16e","./js/lyrics.js":"./js/lyrics.js?v=9eedaef16e","./js/main.js":"./js/main.js?v=9eedaef16e","./js/model.js":"./js/model.js?v=9eedaef16e","./js/practice.js":"./js/practice.js?v=9eedaef16e","./js/records.js":"./js/records.js?v=9eedaef16e","./js/sheet.js":"./js/sheet.js?v=9eedaef16e","./js/strumfit.js":"./js/strumfit.js?v=9eedaef16e","./js/strumgame.js":"./js/strumgame.js?v=9eedaef16e","./js/strums.js":"./js/strums.js?v=9eedaef16e","./js/strumview.js":"./js/strumview.js?v=9eedaef16e","./js/youtube.js":"./js/youtube.js?v=9eedaef16e"}}</script>
+<script type="importmap">{"imports":{"./js/audio.js":"./js/audio.js?v=69e9eb253a","./js/bridge.js":"./js/bridge.js?v=69e9eb253a","./js/chordbar.js":"./js/chordbar.js?v=69e9eb253a","./js/chords.js":"./js/chords.js?v=69e9eb253a","./js/dashboard.js":"./js/dashboard.js?v=69e9eb253a","./js/diagram.js":"./js/diagram.js?v=69e9eb253a","./js/drills.js":"./js/drills.js?v=69e9eb253a","./js/drillview.js":"./js/drillview.js?v=69e9eb253a","./js/dsp.js":"./js/dsp.js?v=69e9eb253a","./js/editor.js":"./js/editor.js?v=69e9eb253a","./js/fingering.js":"./js/fingering.js?v=69e9eb253a","./js/instrument.js":"./js/instrument.js?v=69e9eb253a","./js/lyrics.js":"./js/lyrics.js?v=69e9eb253a","./js/main.js":"./js/main.js?v=69e9eb253a","./js/model.js":"./js/model.js?v=69e9eb253a","./js/practice.js":"./js/practice.js?v=69e9eb253a","./js/records.js":"./js/records.js?v=69e9eb253a","./js/sheet.js":"./js/sheet.js?v=69e9eb253a","./js/site.js":"./js/site.js?v=69e9eb253a","./js/strumfit.js":"./js/strumfit.js?v=69e9eb253a","./js/strumgame.js":"./js/strumgame.js?v=69e9eb253a","./js/strums.js":"./js/strums.js?v=69e9eb253a","./js/strumview.js":"./js/strumview.js?v=69e9eb253a","./js/youtube.js":"./js/youtube.js?v=69e9eb253a"}}</script>
 <!-- /importmap -->
 </head>
 <body>
@@ -28,6 +28,8 @@
           <hr>
           <button type="button" data-act="details">곡 정보·튜닝·카포</button>
           <button type="button" data-act="lyrics">가사 붙여넣어 맞추기</button>
+          <hr>
+          <button type="button" data-act="other-site">기타 악보 사이트로</button>
         </div>
       </div>
       <div class="menu">
@@ -231,7 +233,7 @@
 <dialog class="dlg-login">
   <form method="dialog" autocomplete="on">
     <h2>로그인</h2>
-    <p class="hint">게임 기록을 아이디별로 이 PC(구글 드라이브 우쿨렐레 폴더)에 저장합니다. 처음이면 아이디와 PIN을 정하고 «가입».</p>
+    <p class="hint">게임 기록을 아이디별로 이 PC의 구글 드라이브에 저장합니다. 처음이면 아이디와 PIN을 정하고 «가입».</p>
     <label class="row">아이디 <input type="text" name="id" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="영문 소문자·숫자 3~20자"></label>
     <label class="row">PIN <input type="password" name="pin" autocomplete="current-password" inputmode="numeric" placeholder="숫자 4~8자리"></label>
     <p class="hint lg-msg"></p>
@@ -285,6 +287,6 @@
   </form>
 </dialog>
 
-<script type="module" src="js/main.js?v=9eedaef16e"></script>
+<script type="module" src="js/main.js?v=69e9eb253a"></script>
 </body>
 </html>

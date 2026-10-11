@@ -96,7 +96,7 @@ def main():
     ap.add_argument("--video", required=True)
     ap.add_argument("--job", required=True)
     ap.add_argument("--lang", default="")
-    ap.add_argument("--tuning", default="standard", choices=["standard", "low-g"])
+    ap.add_argument("--tuning", default="standard", choices=["standard", "low-g", "guitar", "guitar-drop-d"])
     ap.add_argument("--no-lyrics", action="store_true")
     ap.add_argument("--no-inst", action="store_true")
     ap.add_argument("--reuse-audio", action="store_true", help="keep audio.wav from an earlier run of this job")
