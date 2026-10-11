@@ -228,6 +228,7 @@ function fromPitchData(d, opts) {
   s.chords = d.chords || [];
   s.lyrics = d.lyrics || [];
   s.sections = d.sections || [];
+  if (d.strum && d.strum.pattern) s.strum = { pattern: String(d.strum.pattern) };
   const report = [];
   s.tracks = (d.melody || []).map((t, i) => {
     const capo = Math.max(0, Math.min(12, int(d.capo ?? opts.capo, 0)));
