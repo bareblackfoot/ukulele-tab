@@ -11,9 +11,10 @@ const STRING_LABEL = ["G", "C", "E", "A"];
 export const SHEET_MAX_W = 980; // lines get hard to follow when they run across a wide monitor
 
 export class SheetView {
-  constructor(root, { onSeek } = {}) {
+  constructor(root, { onSeek, onStrum } = {}) {
     this.root = root;
     this.onSeek = onSeek || (() => {});
+    this.onStrum = onStrum || (() => {});
     this.bars = [];
     this.geo = [];      // per bar: {line, x0, x1}
     this.lines = [];    // per line: {svg, el, cursor, hl}
@@ -111,7 +112,7 @@ export class SheetView {
         let sx = x0 + 3;
         if (strumAt.has(bar.start)) {
           const arrows = strumArrows(strumAt.get(bar.start));
-          g += `<text class="strumchg" x="${sx}" y="${staffY - 38}"><title>여기부터 스트럼 패턴 바뀜</title>${esc(arrows)}</text>`;
+          g += `<text class="strumchg" data-bar="${bar.index}" x="${sx}" y="${staffY - 38}"><title>여기부터 스트럼 패턴 바뀜 (누르면 고르기)</title>${esc(arrows)}</text>`;
           sx += arrows.length * 6.2 + 10;
         }
         if (sectionAt.has(bar.start)) g += `<text class="sect" x="${sx}" y="${staffY - 38}">${esc(sectionAt.get(bar.start))}</text>`;
@@ -219,6 +220,8 @@ export class SheetView {
   }
 
   handleClick(e) {
+    const mark = e.target.closest(".strumchg");
+    if (mark) { this.onStrum(+mark.dataset.bar); return; }
     const lineEl = e.target.closest(".sheet-line");
     if (!lineEl || !this.score) return;
     const L = +lineEl.dataset.line;

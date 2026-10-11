@@ -60,6 +60,8 @@ export function normalizeScore(o) {
     .map((e) => ({ col: Math.max(0, int(e.col)), [key]: String(e[key]) }));
   s.sections = ev(o.sections, "text");
   s.strums = cleanStrums(o.strums);
+  if (Array.isArray(o.strumProfile)) s.strumProfile = cleanProfile(o.strumProfile);
+  if (o.strumProfileKind) s.strumProfileKind = o.strumProfileKind === "ukulele" ? "ukulele" : "band";
   s.chords = ev(o.chords, "name");
   s.lyrics = ev(o.lyrics, "text");
   s.tracks = (o.tracks && o.tracks.length ? o.tracks : s.tracks).map((t, i) => ({
@@ -146,6 +148,9 @@ export const cleanPattern = (p) => String(p || "").toUpperCase().replace(/[^DUX-
 function cleanStrums(arr) {
   return (arr || []).map((e) => ({ col: Math.max(0, int(e && e.col)), pattern: cleanPattern(e && e.pattern) })).filter((e) => e.pattern);
 }
+
+// per bar, how strongly the recording's accompaniment starts a sound on each 8th (0..1); used to suggest patterns
+const cleanProfile = (arr) => arr.map((b) => (Array.isArray(b) ? b.slice(0, 24).map((v) => Math.max(0, Math.min(1, Number(v) || 0))) : []));
 
 // strum pattern in force at a column (8th-note slots counted from the bar start)
 export function strumAt(score, col) {
@@ -246,6 +251,8 @@ function fromPitchData(d, opts) {
   s.sections = d.sections || [];
   if (d.strum && d.strum.pattern) s.strum = { pattern: String(d.strum.pattern) };
   s.strums = cleanStrums(d.strums);
+  if (Array.isArray(d.strumProfile)) s.strumProfile = cleanProfile(d.strumProfile);
+  if (d.strumProfileKind) s.strumProfileKind = d.strumProfileKind === "ukulele" ? "ukulele" : "band";
   const report = [];
   s.tracks = (d.melody || []).map((t, i) => {
     const capo = Math.max(0, Math.min(12, int(d.capo ?? opts.capo, 0)));

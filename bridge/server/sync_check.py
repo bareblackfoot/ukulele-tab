@@ -64,8 +64,10 @@ def main():
     mu, sd = ref.mean(), ref.std() + 1e-8
     with torch.no_grad():
         est = apply_model(model, ((wav - mu) / sd)[None], device=device, shifts=1, split=True, overlap=0.25, progress=False)[0]
-    vocals = (est * sd + mu)[model.sources.index("vocals")].mean(0).numpy()
-    del model, est
+    stems = est * sd + mu
+    vocals = stems[model.sources.index("vocals")].mean(0).numpy()
+    accomp = stems[model.sources.index("other")].mean(0).numpy()   # guitar, piano, ukulele: where the strums are
+    del model, est, stems
     log("보컬 분리 끝")
 
     from beat_this.inference import Audio2Beats
@@ -102,11 +104,34 @@ def main():
         b = blocks[k]
         per_block.append({"from_col": k * bar_len * 4, "video_s": round(vt(k * bar_len * 4), 2),
                           "beats": stats(b["beats"]), "lyrics": stats(b["lyrics"])})
+    # strum profile: how strongly the accompaniment starts a sound on each 8th of every bar (0..1), so a strum
+    # pattern that fits the recording can be suggested bar by bar
+    a22 = librosa.resample(accomp, orig_sr=sr, target_sr=22050)
+    env = librosa.onset.onset_strength(y=a22, sr=22050, hop_length=220)
+    env_t = np.arange(len(env)) * 220 / 22050
+    meters = sorted(s["meter"], key=lambda m: m["col"])
+    profile, col, mi = [], 0, 0
+    while col < total_cols:
+        while mi + 1 < len(meters) and meters[mi + 1]["col"] <= col:
+            mi += 1
+        ln = meters[mi]["beats"] * spb
+        if mi + 1 < len(meters) and col < meters[mi + 1]["col"] < col + ln:
+            ln = meters[mi + 1]["col"] - col
+        slots = []
+        for c in range(col, col + ln, spb // 2 if spb % 2 == 0 else spb):
+            t = vt(c)
+            m = (env_t >= t - 0.04) & (env_t <= t + 0.04)
+            slots.append(float(env[m].max()) if m.any() else 0.0)
+        profile.append(slots)
+        col += ln
+    top = np.percentile([v for b in profile for v in b] or [1], 95) or 1.0
+    profile = [[round(min(1.0, v / top), 2) for v in b] for b in profile]
     worst = sorted([r for r in lyr_rows if r[2] is not None], key=lambda r: -abs(r[2]))[:25]
     out = {"offsetMs": round(off * 1000), "beats": stats([d for _, d in beat_rows]), "notes": stats([d for _, d in note_rows]),
            "lyrics": stats([d for _, _, d in lyr_rows]), "blocks": per_block,
            "worst_lyrics": [{"col": c, "text": t, "err_ms": round(d * 1000)} for c, t, d in worst],
            "lyric_errors": [{"col": c, "text": t, "err_ms": None if d is None else round(d * 1000)} for c, t, d in lyr_rows],
+           "strum_profile": profile,
            "sung_starts": [round(float(t), 3) for t in starts],
            # sung notes [midi, start, end] in video time, for rebuilding the melody one note per syllable
            "sung_notes": [[round(float(p), 2), round(float(a), 3), round(float(b), 3)] for p, a, b in sorted(sung, key=lambda n: n[1])]}

@@ -14,6 +14,8 @@ import { Dashboard } from "./dashboard.js";
 import { songKey } from "./drills.js";
 import { DrillView } from "./drillview.js";
 import { StrumView } from "./strumview.js";
+import { SHEET_STRUMS, recommendStrums, toStrumEvents, currentPerBar } from "./strumfit.js";
+import { ARROW } from "./strums.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -48,7 +50,7 @@ const engine = new Engine();
 const player = new Player(engine);
 const yt = new YouTubeSync($(".yt-player"));
 yt.onBlocked = () => status("영상이 시작되지 않음. 아이패드·아이폰은 영상 화면을 한 번 직접 눌러 재생해야 함. 그다음부터는 재생 버튼으로 같이 움직임", true);
-const sheet = new SheetView($(".sheet"), { onSeek: (col) => seek(col) });
+const sheet = new SheetView($(".sheet"), { onSeek: (col) => seek(col), onStrum: (bar) => openStrumPicker(bar) });
 const chordbar = new ChordBar($(".chordbar"));
 const editor = new Editor($(".editor"), {
   onChange: (fn, label) => {
@@ -407,6 +409,10 @@ const actions = {
   },
   "lg-login": () => doLogin(false),
   "lg-signup": () => doLogin(true),
+  "strum-pick": () => openStrumPicker(),
+  "st-recommend": () => fillStrumPicker("recommend"),
+  "st-all": () => fillStrumPicker("base"),
+  "st-apply": () => applyStrumPicker(),
   lyrics: () => openLyrics(),
   "ly-apply": () => applyLyrics(),
   details: () => openDetails(),
@@ -774,6 +780,85 @@ async function doLogin(signup) {
     msg.textContent = err.message;
   }
 }
+
+// ---------------------------------------------------------------- strum patterns for the song and each bar
+
+const arrowsOf = (slots) => [...slots].map((c) => ARROW[c] || c).join("");
+let strumRec = null;
+
+function strumOptions(beats, rec) {
+  const list = SHEET_STRUMS.filter((p) => (p.beats || 4) === (beats === 3 ? 3 : 4));
+  return list.map((p) => `<option value="${p.slots}">${arrowsOf(p.slots)}  ${escHtml(p.name)}${p.slots === rec ? " ★추천" : ""}</option>`).join("");
+}
+
+function openStrumPicker(focusBar = -1) {
+  const dlg = $(".dlg-strum");
+  strumRec = recommendStrums(score);
+  const bars = computeBars(score);
+  const cur = currentPerBar(score);
+  dlg.querySelector(".st-src").textContent = strumRec.source === "recording"
+    ? "★추천: 원곡 반주에서 8분음표마다 소리가 나는 자리를 보고 마디마다 가장 비슷한 패턴을 고름. 4마디 단위로 같은 패턴을 이어 감"
+    : "★추천: 박자·빠르기·멜로디가 바쁜 정도로 고름. 원곡 분석이 있는 악보는 반주 소리로 고름";
+  const base = dlg.querySelector("[name=base]");
+  base.innerHTML = strumOptions(4, strumRec.base);
+  if (![...base.options].some((o) => o.value === score.strum.pattern)) base.insertAdjacentHTML("afterbegin", `<option value="${escHtml(score.strum.pattern)}">${arrowsOf(score.strum.pattern)}  지금 패턴</option>`);
+  base.value = score.strum.pattern;
+  const box = dlg.querySelector(".st-bars");
+  box.innerHTML = "";
+  bars.forEach((bar, i) => {
+    const names = score.chords.filter((c) => c.col >= bar.start && c.col < bar.start + bar.len).map((c) => c.name);
+    const cell = document.createElement("div");
+    cell.className = "st-bar" + (i === focusBar ? " focus" : "");
+    cell.dataset.bar = i;
+    if (cur[i] === null) {
+      cell.innerHTML = `<b>${i + 1}마디</b> <span class="none">코드 없음</span>`;
+    } else {
+      cell.innerHTML = `<b>${i + 1}마디</b> ${escHtml(names.join(" ") || "")}<select aria-label="${i + 1}마디 스트럼">${strumOptions(bar.beats, strumRec.perBar[i])}</select>`;
+      const sel = cell.querySelector("select");
+      if (![...sel.options].some((o) => o.value === cur[i])) sel.insertAdjacentHTML("afterbegin", `<option value="${escHtml(cur[i])}">${arrowsOf(cur[i])}  지금 패턴</option>`);
+      sel.value = cur[i];
+      sel.addEventListener("change", markStrumCells);
+    }
+    box.appendChild(cell);
+  });
+  markStrumCells();
+  dlg.showModal();
+  if (focusBar >= 0) box.querySelector(`[data-bar="${focusBar}"]`)?.scrollIntoView({ block: "center" });
+}
+
+// outline the bars whose pattern differs from the bar before (where the sheet will show a change)
+function markStrumCells() {
+  let prev = $(".dlg-strum [name=base]").value;
+  $$(".dlg-strum .st-bar").forEach((cell) => {
+    const sel = cell.querySelector("select");
+    if (!sel) return;
+    cell.classList.toggle("changed", sel.value !== prev);
+    prev = sel.value;
+  });
+}
+
+function fillStrumPicker(how) {
+  const dlg = $(".dlg-strum");
+  if (how === "recommend") dlg.querySelector("[name=base]").value = strumRec.base;
+  const base = dlg.querySelector("[name=base]").value;
+  dlg.querySelectorAll(".st-bar").forEach((cell) => {
+    const sel = cell.querySelector("select");
+    if (!sel) return;
+    const want = how === "recommend" ? strumRec.perBar[+cell.dataset.bar] : base;
+    if ([...sel.options].some((o) => o.value === want)) sel.value = want;
+  });
+  markStrumCells();
+}
+
+function applyStrumPicker() {
+  const dlg = $(".dlg-strum");
+  const base = dlg.querySelector("[name=base]").value;
+  const perBar = computeBars(score).map((_, i) => dlg.querySelector(`.st-bar[data-bar="${i}"] select`)?.value || null);
+  const { pattern, strums } = toStrumEvents(score, perBar, base);
+  mutate((s) => { s.strum.pattern = pattern; s.strums = strums; }, "스트럼 패턴");
+  dlg.close();
+}
+$(".dlg-strum [name=base]").addEventListener("change", markStrumCells);
 
 function openLyrics() {
   const dlg = $(".dlg-lyrics");

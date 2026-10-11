@@ -62,7 +62,10 @@ def main():
     ap.add_argument("check")
     ap.add_argument("--asr")
     ap.add_argument("--keep-melody", action="store_true")
+    ap.add_argument("--asr-shift", type=int, default=0, help="add this to the recogniser's columns (sheet cut at the front)")
     ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--pin", action="append", default=[],
+                    help="LINE=BAR.BEAT: lyric line LINE (0-based) starts at or after this place (bar numbers as on the sheet)")
     a = ap.parse_args()
     sheet_path = Path(a.sheet)
     s = json.loads(sheet_path.read_text(encoding="utf-8"))
@@ -77,7 +80,7 @@ def main():
     anchors = []
     if a.asr:
         for line in json.loads(Path(a.asr).read_text(encoding="utf-8"))["lines"]:
-            anchors += [{"col": x["col"], "text": x["text"]} for x in line.get("syllables", [])]
+            anchors += [{"col": x["col"] + a.asr_shift, "text": x["text"]} for x in line.get("syllables", [])]
 
     if a.keep_melody:
         mel = s["tracks"][0]["notes"]
@@ -85,7 +88,33 @@ def main():
     else:
         sung = [n for n in sync["sung_notes"] if n[2] - n[1] >= 0.06]
         cand = [{"col": to_col(st), "len": max(0.5, to_col(en) - to_col(st))} for _, st, en in sung]
-    ev = node("align_lyrics.mjs", {"stepsPerBeat": spb, "notes": cand, "anchors": anchors, "text": text})
+    # bars as the sheet numbers them (the first one is 1), for --pin
+    meters = sorted(s["meter"], key=lambda m: m["col"])
+    bars, col, mi = [], 0, 0
+    while col < s["columnCount"]:
+        while mi + 1 < len(meters) and meters[mi + 1]["col"] <= col:
+            mi += 1
+        ln = meters[mi]["beats"] * spb
+        if mi + 1 < len(meters) and col < meters[mi + 1]["col"] < col + ln:
+            ln = meters[mi + 1]["col"] - col
+        bars.append(col)
+        col += ln
+    pins = []
+    for p in a.pin:
+        line, pos = p.split("=")
+        bar, _, beat = pos.partition(".")
+        pins.append((int(line), bars[int(bar) - 1] + (float(beat or 1) - 1) * spb))
+    pins.sort()
+    # align part by part: lines from one pin to the next only use the notes from that place on
+    lines = [l for l in text.splitlines() if l.strip()]
+    parts = [(0, -1e9)] + pins
+    ev = []
+    for k, (l0, c0) in enumerate(parts):
+        l1, c1 = (parts[k + 1] if k + 1 < len(parts) else (len(lines), 1e12))
+        if l1 <= l0:
+            continue
+        ev += node("align_lyrics.mjs", {"stepsPerBeat": spb, "notes": [c for c in cand if c0 - 1e-6 <= c["col"] < c1 - 1e-6],
+                                        "anchors": [x for x in anchors if c0 <= x["col"] < c1], "text": "\n".join(lines[l0:l1])})
 
     if a.keep_melody:
         lyrics = [{"col": int(round(e["col"])), "text": e["text"]} for e in ev]
@@ -93,10 +122,16 @@ def main():
     else:
         # split sung notes where a syllable starts inside them; notes without a syllable stay (held vowels, runs)
         syl = sorted(((e["col"], e["text"]) for e in ev), key=lambda x: x[0])
+        spans = [(to_col(st), to_col(en)) for _, st, en in sung]
+        # each syllable belongs to one sung note: the one starting at it, else the latest one started before it
+        owner = {}
+        for k, (c, t) in enumerate(syl):
+            exact = [i for i, (c0, _) in enumerate(spans) if abs(c0 - c) < 1e-6]
+            owner[k] = exact[0] if exact else max((i for i, (c0, _) in enumerate(spans) if c0 <= c), default=0)
         segs = []
-        for p, st, en in sung:
-            c0, c1 = to_col(st), to_col(en)
-            cuts = [(c, t) for c, t in syl if c0 - 1e-6 <= c < c1 - 1e-6]
+        for i, (p, st, en) in enumerate(sung):
+            c0, c1 = spans[i]
+            cuts = [syl[k] for k in sorted(owner) if owner[k] == i]
             starts = [(c0, None)] + cuts if not cuts or cuts[0][0] > c0 + 1e-6 else cuts
             for k, (c, t) in enumerate(starts):
                 end = starts[k + 1][0] if k + 1 < len(starts) else c1

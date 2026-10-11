@@ -17,7 +17,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 JOBS = REPO / "bridge" / "jobs"
 LIB = Path(r"G:\내 드라이브\2.취미생활\우쿨렐레\악보")
-ONLY = set(sys.argv[1:])
+# importing this file (for its helpers) must not rebuild anything
+ONLY = set(sys.argv[1:]) if __name__ == "__main__" else {"(imported)"}
 
 PC = {"C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3, "E": 4, "F": 5, "F#": 6, "Gb": 6, "G": 7, "G#": 8, "Ab": 8,
       "A": 9, "A#": 10, "Bb": 10, "B": 11}
@@ -67,11 +68,48 @@ def bars_of(t):
     return out
 
 
+def seconds_at(t, col):
+    """score time of a column"""
+    spb = t.get("stepsPerBeat", 4)
+    ev = sorted(t["tempo"], key=lambda e: e["col"])
+    sec = 0.0
+    for i, e in enumerate(ev):
+        end = ev[i + 1]["col"] if i + 1 < len(ev) else None
+        if end is None or col <= end:
+            return sec + (col - e["col"]) * 60.0 / e["bpm"] / spb
+        sec += (end - e["col"]) * 60.0 / e["bpm"] / spb
+    return sec
+
+
+def trim(t, bar):
+    """drop everything before bar `bar` (1-based, as bars_of counts) and keep the video in step"""
+    c0 = bars_of(t)[bar - 1][0]
+    x = seconds_at(t, c0)
+    def shift(arr, keep_first=None):
+        out = [{**e, "col": e["col"] - c0} for e in arr if e["col"] >= c0]
+        if keep_first is not None and (not out or out[0]["col"] > 0):
+            out.insert(0, {**keep_first, "col": 0})
+        return out
+    in_force = lambda arr: [e for e in sorted(arr, key=lambda e: e["col"]) if e["col"] <= c0][-1]
+    t["tempo"] = shift(t["tempo"], in_force(t["tempo"]))
+    t["meter"] = shift(t["meter"], in_force(t["meter"]))
+    for k in ("chords", "lyrics", "sections"):
+        t[k] = shift(t.get(k, []))
+    for tr in t.get("melody", []):
+        tr["notes"] = shift(tr["notes"])
+    t["columnCount"] -= c0
+    # video time = score time - offsetMs / 1000, and score time now starts x seconds later
+    t["youtube"]["offsetMs"] = int(round(t["youtube"].get("offsetMs", 0) - x * 1000))
+    return t
+
+
 def build(job, out_name, meta, strum, capo=0, explicit=None, vocab=None, sections=None, simplify=False, am7_after_a=False,
-          lyrics_fn=None):
+          lyrics_fn=None, strums=None, trim_bar=None):
     if ONLY and job not in ONLY:
         return
     t = json.loads((JOBS / job / "result.json").read_text(encoding="utf-8"))
+    if trim_bar:
+        t = trim(t, trim_bar)
     bars = bars_of(t)
     spb = t.get("stepsPerBeat", 4)
     if explicit:
@@ -113,6 +151,8 @@ def build(job, out_name, meta, strum, capo=0, explicit=None, vocab=None, section
     t["meta"] = {**t.get("meta", {}), **meta}
     t["strum"] = {"pattern": strum}
     t["sections"] = [{"col": bars[b - 1][0], "text": s} for b, s in (sections or [])]
+    # strum pattern changes, keyed like explicit chords (bar numbers of the reference sheet + 1)
+    t["strums"] = [{"col": bars[b - 1][0], "pattern": p} for b, p in (strums or [])]
     if lyrics_fn:
         t["lyrics"], extra = lyrics_fn(t, bars)
         t["sections"] = sorted(t["sections"] + extra, key=lambda s: s["col"])
@@ -164,6 +204,21 @@ build("fav-antifreeze", "Antifreeze - 검정치마",
        "source": "원곡 녹음에서 박자·가사·멜로디를 땀. 코드 진행은 하루한장 우쿨렐레 C조 악보를 참고함"},
       "D-DU-UDU", capo=6, explicit=af,
       sections=[(2, "전주"), (10, "1절"), (26, "2절"), (42, "후렴 전"), (50, "후렴"), (60, "후렴 전"), (68, "후렴"), (80, "브리지"), (113, "끝")])
+
+# ---------------------------------------------------------------- Antifreeze 하루한장 우쿨렐레판: 카포 없이 C조
+# The 하루한장 video (pcsmodi4Uus) talks and drills chords for the first 30 bars; the sheet starts at bar 30 of the
+# recording. Its own sheet: verse x2, pre-chorus, chorus (10 bars), pre-chorus, chorus, bridge (8 bars) x2.
+H_V = [["F"], ["G7"], ["C"], ["F"], ["F"], ["G7"], ["C"], ["E7"], ["F"], ["G7"], ["E7"], ["Am"], ["Dm"], ["G7"], ["C"], ["C"]]
+H_P = [["Am"], ["Em7"], ["F", "G7"], ["C", "G"]] * 2
+H_C = [["F"], ["Em7"], ["F"], ["Em7"], ["F"], ["Em7"], ["Dm"], ["G7"], ["C"], ["C"]]
+H_B = [["Am"], ["D7"], ["G7"], ["C", "G"]] * 2
+haru = {}
+haru.update(lay(3, H_V + H_V + H_P + H_C + H_P + H_C + H_B + H_B + [["C"]]))
+build("haru-antifreeze2", "Antifreeze (하루한장 우쿨렐레, 카포 없음) - 검정치마",
+      {"title": "Antifreeze (하루한장 우쿨렐레판)", "artist": "검정치마 · 연주 하루 한 장 우쿨렐레", "key": "C (카포 없음)",
+       "source": "하루한장 우쿨렐레 영상(pcsmodi4Uus)의 연주에서 박자·멜로디를 땀. 코드는 영상 속 하루한장 악보를 따름"},
+      "D-DU-UDU", explicit=haru, trim_bar=30,
+      sections=[(3, "1절"), (19, "2절"), (35, "후렴 전"), (43, "후렴"), (53, "후렴 전"), (61, "후렴"), (71, "브리지"), (87, "끝")])
 
 # ---------------------------------------------------------------- 0+0 (한로로): 원곡 코드를 하루한장 A조 코드표로
 build("fav-0plus0", "0+0 - 한로로",
@@ -238,6 +293,16 @@ def hitorigotsu_lyrics(t, bars):
             first[(li, wi)] = k
             k += len(w)
     assert k == len(ev), (k, len(ev))
+    if text.get("korean"):
+        # sung in Korean: the same places, one Korean syllable for each sung syllable of the line
+        out, k = [], 0
+        for ws, ko in zip(words, text["korean"]):
+            syl = [ch for ch in ko if "가" <= ch <= "힣"]
+            n = sum(len(w) for w in ws)
+            assert len(syl) == n, (ko, n)
+            out += [{"col": e["col"], "text": u} for e, u in zip(ev[k:k + n], syl)]
+            k += n
+        return out, []
     sections = {}
     for key, meaning in text["meanings"]:
         col = ev[first[tuple(key)]]["col"]
@@ -251,6 +316,7 @@ def hitorigotsu_lyrics(t, bars):
 
 build("fav-hitorigotsu", "ひとりごつ (하치와레의 혼잣말) - ハチワレ",
       {"title": "ひとりごつ (하치와레의 혼잣말)", "artist": "ハチワレ (CV: 田中誠人)", "key": "D",
-       "source": "원곡 녹음(TV 크기)에서 박자·멜로디를 땀. 코드·가사 발음·뜻은 우쿨소년 블로그 악보"
-                 "(m.blog.naver.com/uke_boy/223497437366)를 따름. 칼립소나 셔플 주법"},
+       "source": "원곡 녹음(TV 크기)에서 박자·멜로디를 땀. 코드는 우쿨소년 블로그 악보"
+                 "(m.blog.naver.com/uke_boy/223497437366)를 따름. 가사는 그 뜻을 바탕으로 음에 맞춰 한국어로 개사함. 칼립소나 셔플 주법"},
       "D-DU-UDU", explicit=lay(2, HG), lyrics_fn=hitorigotsu_lyrics)
+# strum patterns per bar come afterwards from the recording: tools/strum_apply.mjs <sheet> bridge/jobs/check-<id>/sync.json

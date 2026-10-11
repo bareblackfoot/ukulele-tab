@@ -292,6 +292,14 @@ dialog .opts label { display: inline-flex; align-items: center; gap: 4px; }
 .tx-jobs .job small { color: var(--ink2); }
 .ex-list button { display: block; width: 100%; text-align: left; margin: 4px 0; }
 .lib-list { max-height: 46vh; overflow-y: auto; }
+.dlg-strum { width: min(940px, calc(100vw - 32px)); }
+.st-bars { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; max-height: 56vh; overflow-y: auto; margin: 6px 0; }
+.st-bar { border: 1px solid var(--btn-b); border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+.st-bar.changed { border-color: var(--accent); }
+.st-bar.focus { box-shadow: 0 0 0 2px var(--accent); }
+.st-bar b { font-size: 12px; }
+.st-bar select { width: 100%; margin-top: 4px; font-size: 13px; }
+.st-bar .none { color: var(--ink2); }
 .dlg-lyrics textarea { width: 100%; font: inherit; padding: 8px; border: 1px solid var(--btn-b); border-radius: 6px; background: var(--btn); color: var(--ink); }
 .lib-filter { width: 100%; margin: 4px 0; padding: 5px 8px; border: 1px solid var(--btn-b); border-radius: 6px; background: var(--btn); }
 dialog h2 small { font-size: 12px; font-weight: 400; }
