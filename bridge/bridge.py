@@ -147,6 +147,23 @@ def library_list():
     return out
 
 
+def library_owners():
+    """accounts that may see and change my library (bridge/state/config.json "libraryOwners", default nurikim)"""
+    cfg = _jload(STATE_DIR / "config.json", {}) if (STATE_DIR / "config.json").exists() else {}
+    return set(cfg.get("libraryOwners") or ["nurikim"])
+
+
+def library_auth(session):
+    """id of the logged-in owner, or raises PermissionError"""
+    try:
+        uid = _auth(session)
+    except PermissionError:
+        raise PermissionError("내 악보는 로그인해야 볼 수 있음")
+    if uid not in library_owners():
+        raise PermissionError("내 악보는 주인 아이디로 로그인해야 볼 수 있음")
+    return uid
+
+
 def library_save(name, score):
     if not LIB_NAME.match(name or ""):
         raise ValueError("파일 이름 형식이 아님")
@@ -574,7 +591,7 @@ class Handler(BaseHTTPRequestHandler):
         if o and ALLOWED_ORIGIN.match(o):
             self.send_header("Access-Control-Allow-Origin", o)
             self.send_header("Vary", "Origin")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Bridge-Token")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Bridge-Token, X-Session")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.send_header("Access-Control-Allow-Private-Network", "true")
             self.send_header("Access-Control-Max-Age", "600")
@@ -626,6 +643,11 @@ class Handler(BaseHTTPRequestHandler):
                                        "queued": queue.qsize(), "lastFailure": fail.read_text(encoding="utf-8") if fail.exists() else None})
             if path == "/jobs":
                 return self.send(200, {"jobs": list_jobs()})
+            if path == "/library" or path.startswith("/library/"):
+                try:
+                    library_auth(self.headers.get("X-Session"))
+                except PermissionError as e:
+                    return self.send(403, {"error": str(e)})
             if path == "/library":
                 return self.send(200, {"items": library_list(), "folder": str(LIBRARY)})
             if path.startswith("/library/"):
@@ -683,6 +705,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(413, {"error": "악보가 너무 큼"})
             try:
                 body = json.loads(self.rfile.read(n) or b"{}")
+                try:
+                    library_auth(body.get("session"))
+                except PermissionError as e:
+                    return self.send(403, {"error": str(e)})
                 name = library_save(str(body.get("file") or ""), body.get("score") or {})
                 log(f"library saved {name}")
                 return self.send(200, {"file": name})

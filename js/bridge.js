@@ -14,13 +14,13 @@ export function saveBridgeSettings(s) {
   try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (_) { /* private mode */ }
 }
 
-async function call(path, { method = "GET", body } = {}) {
+async function call(path, { method = "GET", body, headers = {} } = {}) {
   const s = bridgeSettings();
   let res;
   try {
     res = await fetch(s.url.replace(/\/$/, "") + path, {
       method,
-      headers: { "X-Bridge-Token": s.token, ...(body ? { "Content-Type": "application/json" } : {}) },
+      headers: { "X-Bridge-Token": s.token, ...(body ? { "Content-Type": "application/json" } : {}), ...headers },
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (e) {
@@ -43,8 +43,9 @@ export const bridge = {
   result: (id) => call(`/jobs/${encodeURIComponent(id)}/result`),
   submit: (req) => call("/jobs", { method: "POST", body: req }),
   cancel: (id) => call(`/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
-  library: () => call("/library"),
-  libraryGet: (file) => call(`/library/${encodeURIComponent(file)}`),
-  librarySave: (file, score) => call("/library", { method: "POST", body: { file, score } }),
+  // my library needs the owner's login session
+  library: (session) => call("/library", { headers: { "X-Session": session || "" } }),
+  libraryGet: (file, session) => call(`/library/${encodeURIComponent(file)}`, { headers: { "X-Session": session || "" } }),
+  librarySave: (file, score, session) => call("/library", { method: "POST", body: { file, score, session } }),
   post: (path, body) => call(path, { method: "POST", body }),
 };

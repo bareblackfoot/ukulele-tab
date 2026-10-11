@@ -612,8 +612,13 @@ async function openExamples() {
   mine.textContent = "";
   dlg.showModal();
   const filter = dlg.querySelector(".lib-filter");
+  const sess = records.session();
+  // my library is only for the owner account; everyone else does not see the section at all
+  dlg.querySelectorAll(".lib-part").forEach((el) => { el.hidden = true; });
   try {
-    const { items } = await bridge.library();
+    if (!sess) throw Object.assign(new Error("로그인 안 함"), { status: 403 });
+    const { items } = await bridge.library(sess.session);
+    dlg.querySelectorAll(".lib-part").forEach((el) => { el.hidden = false; });
     const draw = () => {
       const q = filter.value.trim().toLowerCase();
       mine.innerHTML = "";
@@ -624,7 +629,7 @@ async function openExamples() {
         b.addEventListener("click", async () => {
           dlg.close();
           try {
-            const obj = await bridge.libraryGet(it.file);
+            const obj = await bridge.libraryGet(it.file, sess.session);
             setScore(loadAnyFormat(obj));
             libraryFile = it.file;
             seek(0);
@@ -637,7 +642,10 @@ async function openExamples() {
     filter.oninput = draw;
     draw();
   } catch (err) {
-    mine.textContent = `내 PC에 연결되지 않아 못 불러옴 (${err.message})`;
+    if (err.status !== 403) {
+      dlg.querySelectorAll(".lib-part").forEach((el) => { el.hidden = false; });
+      mine.textContent = `내 PC에 연결되지 않아 못 불러옴 (${err.message})`;
+    }
   }
   try {
     const items = await (await fetch("examples/manifest.json")).json();
@@ -658,6 +666,15 @@ function syncAccount() {
   const b = $("[data-act=account]");
   b.textContent = s ? s.id : "로그인";
   b.hidden = false;
+  // my library is for the owner account only; ask the bridge whether this login may use it
+  $("[data-act=save-lib]").hidden = true;
+  $("[data-act=examples]").textContent = "예제";
+  if (s) {
+    bridge.library(s.session).then(() => {
+      $("[data-act=save-lib]").hidden = false;
+      $("[data-act=examples]").textContent = "예제·내 악보";
+    }).catch(() => {});
+  }
 }
 
 // connect to the bridge on this PC without copying a token; quietly does nothing on other devices
@@ -727,7 +744,9 @@ async function saveToLibrary() {
   if (!name) return;
   const file = name.endsWith(".json") ? name : `${name}.json`;
   try {
-    await bridge.librarySave(file, JSON.parse(toJSON(score)));
+    const sess = records.session();
+    if (!sess) throw new Error("내 악보함은 주인 아이디로 로그인해야 쓸 수 있음");
+    await bridge.librarySave(file, JSON.parse(toJSON(score)), sess.session);
     libraryFile = file;
   } catch (err) {
     status(`저장 못 함: ${err.message}`, true);
