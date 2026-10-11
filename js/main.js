@@ -13,6 +13,7 @@ import { records, rankOf } from "./records.js";
 import { Dashboard } from "./dashboard.js";
 import { songKey } from "./drills.js";
 import { DrillView } from "./drillview.js";
+import { StrumView } from "./strumview.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -85,6 +86,7 @@ const dashboard = new Dashboard($(".records-view"), {
 const drillView = new DrillView($(".drill:not(.records-view)"), {
   engine, practice, settings, status,
 });
+const strumView = new StrumView($(".strum-view"), { engine, practice, settings, status });
 
 // ---------------------------------------------------------------- score lifecycle
 
@@ -94,6 +96,7 @@ function setScore(s, { keepHistory = false, msg } = {}) {
   player.setScore(score);
   practice.setScore(score);
   drillView.setScore(score);
+  strumView.setScore(score);
   chordbar.setScore(score, settings);
   sheet.render(score, settings);
   editor.setScore(score);
@@ -361,6 +364,7 @@ const actions = {
   edit: () => setView(view === "edit" ? "sheet" : "edit"),
   "view-sheet": () => setView("sheet"),
   drill: () => setView(view === "drill" ? "sheet" : "drill"),
+  strum: () => setView(view === "strum" ? "sheet" : "strum"),
   practice: () => togglePractice(),
   "g-rules": () => $(".dlg-grules").showModal(),
   "g-sync": () => openSync(),
@@ -424,7 +428,7 @@ function setEditing(on) { setView(on ? "edit" : "sheet"); }
 
 function setView(v) {
   if (v === "edit" && practice.on) { status("게임 모드 중에는 편집할 수 없음. 게임 모드를 먼저 끄세요", true); return; }
-  const own = v === "drill" || v === "records";
+  const own = v === "drill" || v === "records" || v === "strum";
   if (own && player.playing) pause();
   view = v;
   // chord practice and records have their own screens; the song's transport, chord panel and lane stay out of the way
@@ -440,6 +444,8 @@ function setView(v) {
   $(".editor").hidden = v !== "edit";
   $(".sheet").hidden = v !== "sheet";
   drillView.show(v === "drill");
+  $("[data-act=strum]").setAttribute("aria-pressed", String(v === "strum"));
+  strumView.show(v === "strum");
   if (v === "edit") { editor.layout(); editor.setPlayhead(player.position(), false); $(".ed-scroll").focus(); }
   if (v === "sheet") sheet.render(score, settings);
   updatePosition(player.position());
@@ -600,7 +606,7 @@ function toggleLoop() {
 }
 
 document.addEventListener("keydown", (e) => {
-  if (e.key !== " " || e.repeat || view === "drill") return;
+  if (e.key !== " " || e.repeat || view === "drill" || view === "strum") return;
   const t = e.target;
   if (t.closest("input, select, textarea, dialog, button") && !t.classList.contains("ed-scroll")) return;
   e.preventDefault();
