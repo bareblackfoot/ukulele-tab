@@ -296,6 +296,26 @@ def acc_login(uid, pin):
         raise fail
 
 
+_remote_hits = {}   # address -> [times of requests]; login attempts are kept under "login:" + address
+
+
+def remote_rate_ok(addr, kind="any"):
+    """at most 120 requests a minute and 20 login attempts an hour from one internet address"""
+    limit, window = (20, 3600) if kind == "login" else (120, 60)
+    key = ("login:" if kind == "login" else "") + str(addr or "?")
+    now = time.time()
+    with _acc_lock:
+        hits = [t for t in _remote_hits.get(key, []) if now - t < window]
+        if len(hits) >= limit:
+            _remote_hits[key] = hits
+            return False
+        hits.append(now)
+        _remote_hits[key] = hits
+        if len(_remote_hits) > 5000:
+            _remote_hits.clear()
+        return True
+
+
 def acc_logout(tok):
     with _acc_lock:
         sessions = _jload(RECORDS / "sessions.json", {})
@@ -582,6 +602,17 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
 
+    # requests that came through the Cloudflare tunnel carry its headers; everything else is from this PC
+    REMOTE_GET = ("/library", "/health")
+    REMOTE_POST = ("/auth/login", "/auth/logout", "/auth/pin", "/records/save", "/records/list", "/library")
+
+    def remote(self):
+        return bool(self.headers.get("Cf-Ray") or self.headers.get("Cf-Connecting-Ip"))
+
+    def remote_allowed(self, path, method):
+        allowed = self.REMOTE_GET if method == "GET" else self.REMOTE_POST
+        return any(path == a or (a == "/library" and path.startswith("/library/")) for a in allowed)
+
     def origin_ok(self):
         o = self.headers.get("Origin")
         return o is None or bool(ALLOWED_ORIGIN.match(o))
@@ -615,10 +646,22 @@ class Handler(BaseHTTPRequestHandler):
         self.cors()
         self.end_headers()
 
-    def authorized(self):
+    def authorized(self, path="", method="GET"):
         if not self.origin_ok():
             self.send(403, {"error": "허용되지 않은 페이지에서 온 요청"})
             return False
+        if self.remote():
+            # from the internet: no token (pairing is only for this PC), only the login-protected parts
+            addr = self.headers.get("Cf-Connecting-Ip")
+            if not remote_rate_ok(addr) or (path == "/auth/login" and not remote_rate_ok(addr, "login")):
+                log(f"remote rate limit: {method} {path} from {addr}")
+                self.send(429, {"error": "요청이 너무 많음. 잠시 뒤에 다시 하세요"})
+                return False
+            if not self.remote_allowed(path, method):
+                log(f"remote request refused: {method} {path} from {self.headers.get('Cf-Connecting-Ip')}")
+                self.send(403, {"error": "밖에서는 로그인·기록·내 악보만 쓸 수 있음"})
+                return False
+            return True
         if not secrets.compare_digest(self.headers.get("X-Bridge-Token", ""), token()):
             self.send(401, {"error": "토큰이 맞지 않음. 연결 설정에서 토큰을 다시 넣어야 함"})
             return False
@@ -630,12 +673,14 @@ class Handler(BaseHTTPRequestHandler):
             # hand the token to the page itself (browsers set Origin and pages cannot fake it), so the page
             # connects without the user copying a token; requests without a browser Origin get nothing
             o = self.headers.get("Origin")
-            if not o or not ALLOWED_ORIGIN.match(o):
+            if self.remote() or not o or not ALLOWED_ORIGIN.match(o):
                 return self.send(403, {"error": "허용되지 않은 페이지에서 온 요청"})
             log(f"paired page {o}")
             return self.send(200, {"token": token(), "version": VERSION})
-        if not self.authorized():
+        if not self.authorized(path, "GET"):
             return
+        if self.remote() and path == "/health":
+            return self.send(200, {"ok": True, "remote": True})
         try:
             if path == "/health":
                 fail = LOGS / "LAST_FAILURE.txt"
@@ -671,9 +716,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send(404, {"error": "없는 작업"})
 
     def do_POST(self):
-        if not self.authorized():
-            return
         path = self.path.split("?")[0].rstrip("/")
+        if not self.authorized(path, "POST"):
+            return
         n = int(self.headers.get("Content-Length") or 0)
         if path.startswith("/auth/") or path.startswith("/records/"):
             if n > 200_000:
@@ -765,7 +810,13 @@ def main():
         print(f"토큰: {t}\n연결 링크(브라우저에서 한 번 열면 저장됨): {PAGE}#token={t}")
         return
     token()
-    # jobs left running by a previous run cannot continue
+    try:
+        srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    except OSError as e:
+        log(f"port {PORT} busy, another bridge is probably running ({e})")
+        return
+    # jobs left running by a previous run cannot continue (only after taking the port, so the 10-minute
+    # check that starts a second copy does not fail the jobs of the running one)
     for p in JOBS.glob("*/job.json"):
         try:
             j = json.loads(p.read_text(encoding="utf-8"))
@@ -774,11 +825,6 @@ def main():
                 write_job(j)
         except Exception:
             pass
-    try:
-        srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    except OSError as e:
-        log(f"port {PORT} busy, another bridge is probably running ({e})")
-        return
     threading.Thread(target=worker, daemon=True).start()
     log(f"bridge started on 127.0.0.1:{PORT} (python {sys.version.split()[0]})")
     srv.serve_forever()

@@ -6,7 +6,7 @@ import { ChordBar } from "./chordbar.js";
 import { Editor } from "./editor.js";
 import { Engine, Player } from "./audio.js";
 import { YouTubeSync, parseVideoId } from "./youtube.js";
-import { bridge, bridgeSettings, saveBridgeSettings } from "./bridge.js";
+import { bridge, bridgeSettings, saveBridgeSettings, connectBridge, isRemote } from "./bridge.js";
 import { Practice, calibrate } from "./practice.js";
 import { alignLyrics } from "./lyrics.js";
 import { records, rankOf } from "./records.js";
@@ -341,11 +341,20 @@ const actions = {
   records: () => setView(view === "records" ? "sheet" : "records"),
   account: async () => {
     if (records.session()) return setView("records");
-    if (!(await autoPair())) {
-      status("이 PC의 연결 프로그램(브리지)에 연결되지 않아 로그인할 수 없음. 로그인과 기록은 이 PC에서만 됨", true);
-      return;
-    }
     openLogin();
+    const dlg = $(".dlg-login");
+    dlg.querySelector(".lg-msg").textContent = "집 PC에 연결 중…";
+    const ok = await autoPair();
+    dlg.querySelector(".lg-msg").textContent = "";
+    // new accounts are made on the PC only; from outside it is login only
+    dlg.querySelector("[data-act=lg-signup]").hidden = isRemote();
+    if (!ok) {
+      // say it inside the dialog: the status line can sit below the visible area on tablets
+      dlg.querySelector(".lg-msg").textContent = "집 PC에 연결되지 않아 로그인할 수 없음 (PC가 꺼졌거나 연결 프로그램이 멈춤). 게임 기록은 이 기기 브라우저에만 저장됨.";
+      dlg.querySelectorAll("[data-act=lg-login], [data-act=lg-signup]").forEach((b) => { b.disabled = true; });
+    } else {
+      $(".dlg-login").querySelectorAll("[data-act=lg-login], [data-act=lg-signup]").forEach((b) => { b.disabled = false; });
+    }
   },
   "lg-login": () => doLogin(false),
   "lg-signup": () => doLogin(true),
@@ -677,20 +686,15 @@ function syncAccount() {
   }
 }
 
-// connect to the bridge on this PC without copying a token; quietly does nothing on other devices
+// connect to the bridge (on this PC directly, elsewhere through the tunnel) without copying a token
+let connecting = null;
 async function autoPair() {
-  if (bridgeSettings().token) return true;
-  try {
-    const res = await fetch(bridgeSettings().url.replace(/\/$/, "") + "/pair");
-    if (!res.ok) return false;
-    const d = await res.json();
-    if (!d.token) return false;
-    saveBridgeSettings({ ...bridgeSettings(), token: d.token });
-    syncAccount();
-    return true;
-  } catch (_) {
-    return false;
-  }
+  if (bridgeSettings().token || isRemote()) return true;
+  connecting = connecting || connectBridge();
+  const mode = await connecting;
+  connecting = null;
+  if (mode) syncAccount();
+  return !!mode;
 }
 
 function openLogin() {
@@ -898,6 +902,14 @@ function watchJob(id) {
 function openTranscribe() {
   txDlg.querySelector(".tx-progress").textContent = "";
   txDlg.showModal();
+  if (isRemote()) {
+    // the tunnel does not take jobs: Claude runs on the PC, so it is started there
+    txDlg.querySelector(".tx-conn").textContent = "";
+    txDlg.querySelector(".tx-jobs").textContent = "유튜브로 악보 따기는 집 PC에서만 됨";
+    txDlg.querySelector("[data-act=tx-start]").disabled = true;
+    return;
+  }
+  txDlg.querySelector("[data-act=tx-start]").disabled = false;
   refreshJobs();
 }
 txDlg.addEventListener("close", () => clearInterval(pollTimer));

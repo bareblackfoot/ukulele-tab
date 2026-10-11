@@ -1,7 +1,7 @@
 // Game results: kept in this browser, and under the logged-in account on this PC (the bridge stores them in
 // a Google Drive folder). Results made before logging in are uploaded once after login.
 
-import { bridge, bridgeSettings } from "./bridge.js";
+import { bridge, bridgeSettings, isRemote } from "./bridge.js";
 
 const LOCAL = "uketab.records";
 const SESSION = "uketab.session";
@@ -24,8 +24,8 @@ async function post(path, body) {
 
 export const records = {
   session() { return store.get(SESSION, null); },
-  // accounts live on this PC, so they need the connection to the bridge
-  available() { return !!bridgeSettings().token; },
+  // accounts live on this PC, so they need the connection to the bridge (directly or through the tunnel)
+  available() { return !!bridgeSettings().token || isRemote(); },
 
   local() { return store.get(LOCAL, []); },
 

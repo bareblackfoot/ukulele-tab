@@ -41,7 +41,7 @@ button.primary { background: var(--accent); color: var(--accent-ink); border-col
 button.toggle[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 input[type="text"], input[type="number"] { background: var(--btn); border: 1px solid var(--btn-b); border-radius: 6px; padding: 4px 8px; }
 
-.app { display: flex; flex-direction: column; height: 100vh; }
+.app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .app > * { flex: none; }
 .app > .views { flex: 1 1 auto; min-height: 0; }
 .topbar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--grid); background: var(--panel); flex-wrap: wrap; }
