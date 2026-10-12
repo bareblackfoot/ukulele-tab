@@ -4,6 +4,7 @@ import { transposeChord, TUNINGS, capoChoices, powerChord } from "./chords.js";
 import { INST, INSTRUMENTS, tuningsOf, skey } from "./instrument.js";
 import { SheetView } from "./sheet.js";
 import { ChordBar } from "./chordbar.js";
+import { GameLane } from "./lane.js";
 import { Editor } from "./editor.js";
 import { Engine, Player } from "./audio.js";
 import { YouTubeSync, parseVideoId } from "./youtube.js";
@@ -67,7 +68,7 @@ const editor = new Editor($(".editor"), {
 });
 
 const practice = new Practice(engine, player, {
-  lane: $(".g-lane"),
+  lane: new GameLane($(".g-lane"), () => settings),
   judge: $(".g-judge"),
   combo: $(".g-combo"),
   onMark: (col, grade) => sheet.mark(col, grade),
@@ -529,7 +530,8 @@ function setView(v) {
   view = v;
   // chord practice and records have their own screens; the song's transport, chord panel and lane stay out of the way
   $(".transport").hidden = own;
-  $(".cb-wrap").hidden = own;
+  // in game mode the lane shows the chords where they come, so the chord panel is not needed
+  $(".cb-wrap").hidden = own || practice.on;
   $(".game").hidden = own || !practice.on;
   $("[data-act=records]").setAttribute("aria-pressed", String(v === "records"));
   dashboard.show(v === "records");
@@ -581,6 +583,7 @@ async function togglePractice(force) {
     btn.setAttribute("aria-pressed", "false");
     if (had && !player.playing) showResult();
   }
+  $(".cb-wrap").hidden = practice.on || view === "drill" || view === "records" || view === "strum";
   syncPracticeControls();
   updatePosition(player.position());
 }

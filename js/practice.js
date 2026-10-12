@@ -37,6 +37,7 @@ export class Practice {
     this.deviceId = store.get(skey("practice.device"), ""); // "" = the device's default input
     this.mic = null;
     this.targets = [];
+    this.strokes = [];
     this.pending = [];
     this.flash = null;
     this.reset();
@@ -71,27 +72,36 @@ export class Practice {
           out.push({ col: n.col, kind: "note", midi: tuning[n.string] + (s.capo || 0) + n.fret, bend, label: `${names[n.string]}${n.fret}${bend ? "b" : ""}` });
         }
       }
-    } else if (s.chords.length) {
-      const firstChord = s.chords[0].col;
-      for (let col = firstChord; col < s.columnCount; col++) {
+    }
+    // the strokes of the strum pattern (as playback strums them, chucks too) are what the lane shows; the
+    // targets are all of them («스트럼 패턴»), the first one in each beat («박마다») or the first one of each
+    // chord («바뀔 때만»), so a target is always a stroke the pattern has
+    const strokes = [];
+    if (this.target !== "melody" && s.chords.length) {
+      const step = spb % 2 === 0 ? spb / 2 : spb;
+      let lastKey = null;
+      for (let col = s.chords[0].col; col < s.columnCount; col++) {
         const ci = chordIndexAt(s, col);
         if (ci < 0) continue;
         const ch = s.chords[ci];
         if (ch.name === "N.C." || !chordShape(ch.name, s.tuning, s.chordShapes)) continue;
         const bar = barAt(bars, col);
         const inBar = col - bar.start;
-        let hit = false, dir = "D";
-        if (this.target === "change") hit = ch.col === col;
-        else if (this.target === "beat") hit = inBar % spb === 0;
-        else if (spb % 2 === 0 && inBar % (spb / 2) === 0) {
-          const pat = strumAt(s, col) || "D-D-D-D-";
-          const c = pat[(inBar / (spb / 2)) % pat.length];
-          hit = c === "D" || c === "U";
-          dir = c;
-        }
-        if (hit) out.push({ col, kind: "chord", chord: ch.name, change: ch.col === col, dir, label: ch.col === col ? ch.name : dir === "U" ? "↑" : "↓" });
+        if (inBar % step) continue;
+        const pat = step === spb ? "D" : strumAt(s, col) || "D-D-D-D-";
+        const dir = pat[(inBar / step) % pat.length];
+        if (dir !== "D" && dir !== "U" && dir !== "X") continue;
+        const st = { col, dir, target: null };
+        strokes.push(st);
+        if (dir === "X") continue;   // a chuck has no chord to hear
+        const key = this.target === "pattern" ? col : this.target === "beat" ? `${bar.index}.${Math.floor(inBar / spb)}` : `c${ci}`;
+        if (key === lastKey) continue;
+        lastKey = key;
+        st.target = { col, kind: "chord", chord: ch.name, change: ch.col === col, dir, label: dir === "U" ? "↑" : "↓" };
+        out.push(st.target);
       }
     }
+    this.strokes = strokes;
     out.sort((a, b) => a.col - b.col);
     for (const t of out) { t.t = tm.colToTime(t.col); t.grade = null; }
     this.targets = out;
@@ -215,7 +225,9 @@ export class Practice {
   // keyboard input: a strum at this moment (timing only)
   keyStrum() {
     if (!this.on || !this.player.playing) return;
-    this.handleOnset(this.engine.ctx.currentTime, null);
+    // a key is pressed with what is heard, and playback is heard the output latency after its audio-clock time
+    const ctx = this.engine.ctx;
+    this.handleOnset(ctx.currentTime - (ctx.outputLatency || 0) - (ctx.baseLatency || 0), null);
   }
 
   // ---------------------------------------------------------------- judging
@@ -379,75 +391,17 @@ export class Practice {
 
   // ---------------------------------------------------------------- drawing
   drawLane() {
-    const cv = this.ui.lane;
-    if (!cv) return;
-    const dpr = window.devicePixelRatio || 1;
-    const W = cv.clientWidth, H = cv.clientHeight;
-    if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
-    const c = cv.getContext("2d");
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const css = getComputedStyle(document.documentElement);
-    const v = (n) => css.getPropertyValue(n).trim();
-    c.fillStyle = v("--panel");
-    c.fillRect(0, 0, W, H);
-    const hitX = 70, pps = Math.max(120, W / 4); // pixels per second of real time
+    const lane = this.ui.lane;
+    if (!lane || !this.score) return;
+    // the lane shows what is heard now: playback reaches the ears the output latency after its audio-clock time
     const p = this.player;
-    const now = p.playing ? p.scoreTime() : this.player.tm.colToTime(this.player.position());
-    const rate = p.rate || 1;
-    // beat grid
-    c.strokeStyle = v("--grid");
-    c.lineWidth = 1;
-    const spb = this.score.stepsPerBeat;
-    const tm = p.tm;
-    const c0 = Math.floor(tm.timeToCol(Math.max(0, now - 0.5)) / spb) * spb;
-    for (let col = c0; col < this.score.columnCount; col += spb) {
-      const x = hitX + ((tm.colToTime(col) - now) / rate) * pps;
-      if (x > W) break;
-      c.beginPath(); c.moveTo(x + 0.5, 8); c.lineTo(x + 0.5, H - 8); c.stroke();
+    let col = p.position();
+    if (p.playing) {
+      const ctx = this.engine.ctx;
+      const lat = (ctx.outputLatency || 0) + (ctx.baseLatency || 0);
+      col = p.tm.timeToCol(Math.max(0, p.scoreTime() - lat * p.rate));
     }
-    // bursts where targets were hit: a ring that grows and fades
-    const nowMs = performance.now();
-    this.bursts = this.bursts.filter((b) => nowMs - b.t < 400);
-    const ringColor = { perfect: "#2f9e44", ok: "#1c7ed6", bad: "#f08c00", miss: "#e03131" };
-    for (const b of this.bursts) {
-      const k = (nowMs - b.t) / 400;
-      c.globalAlpha = 1 - k;
-      c.strokeStyle = ringColor[b.grade];
-      c.lineWidth = b.grade === "perfect" ? 4 : 2;
-      c.beginPath(); c.arc(hitX, H / 2, 10 + k * 26, 0, Math.PI * 2); c.stroke();
-    }
-    c.globalAlpha = 1;
-    // hit line
-    c.strokeStyle = v("--cursor");
-    c.lineWidth = 3;
-    c.beginPath(); c.moveTo(hitX, 4); c.lineTo(hitX, H - 4); c.stroke();
-    const colors = { perfect: "#2f9e44", ok: "#1c7ed6", bad: "#f08c00", miss: "#e03131" };
-    c.textAlign = "center";
-    c.textBaseline = "middle";
-    for (const t of this.targets) {
-      const x = hitX + ((t.t - now) / rate) * pps;
-      if (x < -40) continue;
-      if (x > W + 40) break;
-      const y = H / 2;
-      const judged = t.grade && t.grade !== "pending";
-      c.globalAlpha = judged ? 0.45 : 1;
-      if (t.kind === "chord" && t.change) {
-        c.font = "bold 14px system-ui";
-        const w = Math.max(30, c.measureText(t.label).width + 14);
-        c.fillStyle = judged ? colors[t.grade] : v("--accent");
-        roundRect(c, x - w / 2, y - 14, w, 28, 7);
-        c.fill();
-        c.fillStyle = "#fff";
-        c.fillText(t.label, x, y + 1);
-      } else {
-        c.fillStyle = judged ? colors[t.grade] : v("--ink");
-        c.beginPath(); c.arc(x, y, 12, 0, Math.PI * 2); c.fill();
-        c.fillStyle = v("--paper");
-        c.font = "bold 13px system-ui";
-        c.fillText(t.label, x, y + 1);
-      }
-      c.globalAlpha = 1;
-    }
+    lane.draw(this, col);
   }
 
   drawJudge() {
@@ -481,16 +435,6 @@ export class Practice {
       } else if (big.classList.contains("show")) big.classList.remove("show");
     }
   }
-}
-
-function roundRect(c, x, y, w, h, r) {
-  c.beginPath();
-  c.moveTo(x + r, y);
-  c.arcTo(x + w, y, x + w, y + h, r);
-  c.arcTo(x + w, y + h, x, y + h, r);
-  c.arcTo(x, y + h, x, y, r);
-  c.arcTo(x, y, x + w, y, r);
-  c.closePath();
 }
 
 // Input latency calibration: play clicks, find the microphone onsets, take the median delay.

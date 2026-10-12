@@ -149,7 +149,35 @@ button.game-btn[aria-pressed="true"] { background: #2f9e44; border-color: #2f9e4
 .g-diag { font-size: 12px; color: var(--ink2); margin: 6px 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .g-meter { display: inline-block; width: 90px; height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; vertical-align: middle; }
 .g-meter i { display: block; height: 100%; width: 0; background: #2f9e44; }
-.g-lane { display: block; width: 100%; height: 56px; border-radius: 8px; border: 1px solid var(--grid); }
+.g-lane { --row: 80px; position: relative; width: 100%; height: calc(var(--row) + 48px); border-radius: 8px; border: 1px solid var(--grid); background: var(--paper); overflow: hidden; contain: strict; }
+.gl-item { position: absolute; left: 0; top: 0; will-change: transform; }
+.gl-hit { position: absolute; left: -1.5px; top: var(--row); bottom: 0; width: 3px; background: var(--cursor); z-index: 2; }
+.gl-slot { top: var(--row); bottom: 0; width: 0; z-index: 1; }
+.gl-slot.beat::before { content: ""; position: absolute; left: -0.5px; top: 0; bottom: 15px; border-left: 1px solid var(--grid); }
+.gl-slot.bar { top: 0; }
+.gl-slot.bar::before { border-left: 2px solid var(--btn-b); left: -1px; }
+.gl-slot span { position: absolute; bottom: 1px; left: 0; transform: translateX(-50%); font-size: 11px; line-height: 13px; color: var(--ink2); }
+.gl-slot.beat span { font-weight: 700; color: var(--ink); }
+.gl-st, .gl-note { top: calc(var(--row) + 4px); height: 28px; margin-left: -15px; min-width: 30px; box-sizing: border-box; border-radius: 8px; z-index: 3;
+  display: grid; place-items: center; border: 2px solid var(--ink2); color: var(--ink2); background: var(--paper); }
+.gl-note { margin-left: 0; translate: -50% 0; padding: 0 5px; font-size: 13px; }
+.gl-st svg { width: 15px; height: 19px; fill: currentColor; display: block; }
+.gl-st.x { border-style: dashed; }
+.g-lane.melody { --row: 6px; }
+.g-lane.narrow .gl-st { min-width: 27px; margin-left: -13.5px; }
+.gl-st.tg, .gl-note.tg { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.gl-st.perfect, .gl-note.perfect { background: #2f9e44; border-color: #2f9e44; color: #fff; }
+.gl-st.ok, .gl-note.ok { background: #1c7ed6; border-color: #1c7ed6; color: #fff; }
+.gl-st.bad, .gl-note.bad { background: #f08c00; border-color: #f08c00; color: #fff; }
+.gl-st.miss, .gl-note.miss { background: #e03131; border-color: #e03131; color: #fff; }
+.gl-st.past, .gl-note.past { opacity: .5; }
+.gl-chord { top: 2px; padding: 0 3px 1px; border: 2px solid transparent; border-radius: 8px; background: var(--paper); z-index: 3; }
+.gl-chord .diag { display: block; }
+.gl-chord.small { top: 24px; padding: 3px 7px; border-color: var(--accent); font-size: 15px; }
+.gl-chord.cur { border-color: var(--cursor); background: var(--cur-box); }
+.gl-burst { top: calc(var(--row) + 18px); width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; border: 3px solid; z-index: 4; animation: gl-burst .4s ease-out forwards; }
+.gl-burst.perfect { border-color: #2f9e44; } .gl-burst.ok { border-color: #1c7ed6; } .gl-burst.bad { border-color: #f08c00; } .gl-burst.miss { border-color: #e03131; }
+@keyframes gl-burst { from { transform: scale(1); opacity: 1; } to { transform: scale(2.6); opacity: 0; } }
 .g-counts { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; font-size: 13px; }
 .g-counts b { font-variant-numeric: tabular-nums; }
 .g-notice { font-size: 11px; color: var(--ink2); margin: 4px 0 0; }
@@ -158,6 +186,9 @@ button.game-btn[aria-pressed="true"] { background: #2f9e44; border-color: #2f9e4
 .g-lane-wrap { position: relative; }
 .g-judge { position: absolute; top: 50%; left: 84px; transform: translateY(-50%); pointer-events: none; z-index: 5;
   display: flex; align-items: baseline; gap: 8px; text-shadow: 0 1px 0 var(--paper), 0 0 6px var(--paper); }
+.g-lane-wrap .g-judge { top: 4px; left: 0; width: calc(var(--hit, 96px) - 8px); transform: none; flex-direction: column; align-items: center; gap: 0; }
+.g-lane-wrap .g-judge b { font-size: 17px; }
+.g-lane-wrap .g-judge small, .g-lane-wrap .g-judge i { font-size: 12px; }
 .g-judge b { font-size: 24px; font-weight: 900; letter-spacing: .04em; }
 .g-judge small { font-size: 13px; font-weight: 700; color: var(--ink2); }
 .g-judge i { font-style: normal; font-size: 14px; font-weight: 800; color: var(--ink); }
