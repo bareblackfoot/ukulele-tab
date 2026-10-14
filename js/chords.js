@@ -2,7 +2,7 @@
 // Strings are indexed from 0: ukulele 0..3 = G, C, E, A; guitar 0..5 = low E, A, D, G, B, high E.
 // A fret of -1 means the string is not played (x).
 
-import { TUNINGS, tuningOf } from "./instrument.js";
+import { TUNINGS, INSTRUMENTS, tuningOf } from "./instrument.js";
 export { TUNINGS };
 
 export const NOTE_NAMES_SHARP = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -270,6 +270,9 @@ const shapeCache = new Map();
 // Shape for a chord name on a tuning: {frets, fingers, barre, name} or null.
 // custom: optional map name -> "frets string" that overrides the built-in table.
 export function chordShape(name, tuningName = "standard", custom = null) {
+  // a melody-only instrument (the otamatone) has no chord shapes: its backing chords use another tuning's
+  const sub = INSTRUMENTS[tuningOf(tuningName).inst].chordTuning;
+  if (sub) return chordShape(name, sub, null);
   const key = `${tuningName}|${name}|${custom && custom[name] ? custom[name] : ""}`;
   if (shapeCache.has(key)) return shapeCache.get(key);
   let res = null;

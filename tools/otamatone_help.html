@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>사용법 · 오타마톤 악보</title>
+<style>
+  :root { --paper: #fffdf8; --ink: #1d1b18; --ink2: #5d564c; --accent: #a8743f; --grid: #d9d0c1; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --paper: #1c1b19; --ink: #f1ece2; --ink2: #b6ad9f; --accent: #c9935a; --grid: #4a443b; } }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.65 "Pretendard", "Malgun Gothic", system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1 { font-size: 24px; } h2 { font-size: 18px; margin-top: 32px; border-bottom: 2px solid var(--accent); padding-bottom: 4px; }
+  code, kbd { font-family: ui-monospace, Consolas, monospace; font-size: 13px; background: color-mix(in srgb, var(--grid) 45%, transparent); padding: 1px 5px; border-radius: 4px; }
+  table { border-collapse: collapse; width: 100%; } td, th { border-bottom: 1px solid var(--grid); padding: 6px 8px; text-align: left; vertical-align: top; }
+  .muted { color: var(--ink2); } a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+<h1>오타마톤 악보 사용법</h1>
+<p class="muted">유튜브 영상에 맞춰 오타마톤 악보를 재생하고, 게임 모드에서 마이크로 내 오타마톤 음높이를 듣고 판정하는 도구입니다. 악보는 SPRED처럼 음 높이 칸으로 보입니다. <a href="./">악보로 돌아가기</a></p>
+
+<h2>화면</h2>
+<table>
+<tr><th>악보</th><td>가로는 시간, 세로는 음 높이입니다. 한 칸이 반음이고 위로 갈수록 높은 음입니다. 왼쪽에 칸마다 음 이름(C4, C#4 …)이 있고, 검은 건반 음 칸은 조금 어둡게, C 음 칸 아래에는 선을 그었습니다. 음 하나가 막대 하나이고 길이가 음 길이입니다. 마디를 누르면 그 위치로 갑니다.</td></tr>
+<tr><th>칠 트랙</th><td>보기 → 칠 트랙. SPRED 제작자 악보는 트랙이 셋입니다. 노래 멜로디(basic), 인트로·간주의 반주 멜로디(optional), 구간 앞 짧은 음계(extra). SPRED처럼 처음에는 노래 멜로디만 켜져 있고, 켠 트랙만 소리가 나고 게임에서 판정합니다. 끈 트랙은 악보에 흐리게 보입니다.</td></tr>
+<tr><th>음역</th><td>악보 맨 위에 켠 트랙의 가장 낮은 음과 가장 높은 음이 나옵니다.</td></tr>
+</table>
+
+<h2>재생과 연습</h2>
+<ul>
+<li><kbd>Space</kbd> 재생·일시 정지. 마디를 누르면 그 마디부터 재생합니다.</li>
+<li><b>멜로디 소리</b>: 오타마톤 비슷한 소리로 재생합니다. 앞 음에 바로 이어지는 음은 줄기를 미끄러지듯 음높이가 옮겨 갑니다.</li>
+<li><b>속도</b>: 50%~150%. YouTube를 켜 둔 상태면 영상도 같은 속도로 바뀝니다(영상이 지원하는 속도로 맞춥니다).</li>
+<li><b>구간 반복</b>: 시작 마디에서 한 번, 끝 마디에서 한 번 누르면 그 구간을 반복합니다. 한 번 더 누르면 끕니다.</li>
+<li><b>YouTube</b>: 영상을 악보 재생에 맞춰 같이 틉니다. 싱크 값은 «영상 시각 = 악보 시각 − 값/1000» 규칙이고 SPRED와 같습니다.</li>
+</ul>
+
+<h2>게임 모드 (리듬게임)</h2>
+<p>재생 줄 오른쪽 끝의 <b>게임 모드</b>를 누르면 판정 칸이 열립니다. 마이크가 내 오타마톤 음높이를 계속 듣고 판정합니다. 오타마톤은 줄기를 미끄러지며 음을 바꾸므로, 줄을 치는 악기처럼 소리가 새로 나는 순간이 아니라 음높이로 판정합니다.</p>
+<ul>
+<li><b>화면</b>: 음 높이 칸 위로 음 막대가 오른쪽에서 왼쪽으로 옵니다. 막대가 빨간 선에 닿을 때 그 높이를 내기 시작해서 막대가 끝날 때까지 이어 냅니다. 내가 내는 음높이는 빨간 선에서 왼쪽으로 이어지는 선으로 그려지고, 맞는 높이로 낸 부분은 막대가 초록으로 바뀝니다. 왼쪽 아래에 지금 들리는 음과 몇 cent(반음의 100분의 1) 어긋났는지가 나옵니다.</li>
+<li><b>판정</b>에서 셋 중 하나를 고릅니다.
+  <ul>
+  <li><b>시작 박자 + 음 유지</b>(기본): 음을 제때 맞는 높이로 시작했는지와, 끝까지 맞는 높이로 이어 냈는지를 반씩 봅니다. 시작 판정은 바로 뜨고, 그 음의 최종 판정은 음이 끝날 때 정해집니다.</li>
+  <li><b>시작 박자만</b>: 맞는 높이로 시작한 시각만 봅니다.</li>
+  <li><b>음 유지만</b>: 음 길이 동안 맞는 높이를 낸 비율만 봅니다.</li>
+  </ul></li>
+<li>자세한 기준(맞는 높이의 범위, 타이밍 범위)은 <b>규칙</b> 버튼에 있습니다. 점수는 Perfect 100, Ok 67, Bad 33입니다.</li>
+<li><b>싱크</b>: 마이크 소리는 늦게 들어옵니다. <b>자동 맞추기</b>를 누르고 딸깍 소리 10번에 맞춰 오타마톤을 짧게 한 번씩 내면 늦는 시간을 재서 맞춥니다.</li>
+<li><b>키보드 입력</b>: 마이크가 없으면 F나 J 키로 음 시작 박자만 연습할 수 있습니다.</li>
+<li><b>소리 입력 장치</b>: 보기 → 소리 입력 장치에서 기본 마이크 대신 USB 마이크 등을 고릅니다. 장치 이름은 마이크를 한 번 허용한 뒤에 보입니다.</li>
+<li><b>시작</b>: 재생을 누르면 잠깐 쉬었다가 딸깍 소리 네 번과 함께 3, 2, 1, 시작!이 뜨고 다음 박부터 시작합니다.</li>
+<li>곡이 끝나거나 게임 모드를 끄면 결과 창에 랭크(S·A·B·C·D), 음 유지 비율, 이전 최고 점수가 나옵니다.</li>
+<li>스피커 소리가 마이크로 들어가면 판정이 흔들리니 이어폰을 쓰세요.</li>
+</ul>
+
+<h2>기록과 로그인</h2>
+<ul>
+<li>게임 결과는 이 브라우저에 쌓이고, 위쪽 <b>기록</b>에서 곡마다 최고 점수와 정확도 변화를 봅니다.</li>
+<li><b>로그인</b>: 우쿨렐레·기타 악보 사이트와 같은 아이디를 씁니다. 기록은 이 PC의 구글 드라이브에 아이디별로 저장되고, 이 사이트의 기록은 따로 표시됩니다. 이 PC와 연결된 브라우저에서만 로그인할 수 있습니다.</li>
+</ul>
+
+<h2>파일</h2>
+<ul>
+<li><b>JSON 열기</b>: SPRED 악보 JSON은 음높이 그대로 엽니다. 우쿨렐레·기타 악보를 열면 멜로디만 오타마톤 음역(E3~C#6)으로 옮깁니다.</li>
+<li><b>예제·내 악보</b>: 내 악보는 이 PC의 구글 드라이브 오타마톤 폴더에 있고, 로그인한 주인만 봅니다. SPRED 제작자가 만든 오타마톤 악보 36곡이 들어 있습니다.</li>
+<li><b>곡 정보</b>: 제목, 조, YouTube, 조옮김. 조옮김은 멜로디를 옮기므로 원곡 영상과는 음이 달라집니다.</li>
+<li><b>인쇄 / PDF</b>: 악보 부분만 인쇄합니다. 인쇄 창에서 PDF로 저장할 수 있습니다.</li>
+<li>이 사이트에는 편집 화면이 없습니다. 악보를 고칠 때는 SPRED에서 고쳐 JSON으로 저장한 뒤 엽니다.</li>
+</ul>
+</main>
+</body>
+</html>

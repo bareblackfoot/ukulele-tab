@@ -42,10 +42,11 @@ ACCOUNTS = ["claude-team", "claude-team2"]
 NOWIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 JOB_TIMEOUT = 45 * 60
 # my own sheets (lyrics are copyrighted, so they live here and not in the public repo), one folder per instrument;
-# the guitar site (guitar-tab) sends X-Instrument: guitar
+# the guitar site (guitar-tab) sends X-Instrument: guitar, the otamatone site (otamatone-tab) X-Instrument: otamatone
 LIBRARY = Path(os.environ.get("UKE_LIBRARY", r"G:\내 드라이브\2.취미생활\우쿨렐레\악보"))
-LIBRARIES = {"ukulele": LIBRARY, "guitar": Path(os.environ.get("GUITAR_LIBRARY", r"G:\내 드라이브\2.취미생활\기타\악보"))}
-TUNING_NAMES = ("standard", "low-g", "guitar", "guitar-drop-d")
+LIBRARIES = {"ukulele": LIBRARY, "guitar": Path(os.environ.get("GUITAR_LIBRARY", r"G:\내 드라이브\2.취미생활\기타\악보")),
+             "otamatone": Path(os.environ.get("OTAMATONE_LIBRARY", r"G:\내 드라이브\2.취미생활\오타마톤\악보"))}
+TUNING_NAMES = ("standard", "low-g", "guitar", "guitar-drop-d", "otamatone")
 
 
 def lib_dir(inst):
@@ -344,7 +345,7 @@ def acc_change_pin(tok, old, new):
 
 
 RESULT_FIELDS = ["time", "song", "title", "artist", "mode", "target", "rate", "score", "acc", "tacc", "maxCombo",
-                 "perfect", "ok", "bad", "miss", "early", "late", "n", "total", "fullCombo", "inst"]
+                 "perfect", "ok", "bad", "miss", "early", "late", "n", "total", "fullCombo", "inst", "judge", "hold"]
 
 
 def rec_save(tok, results):

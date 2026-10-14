@@ -1,11 +1,13 @@
 // Practice mode (rhythm game), modelled on SPRED's practice mode: the microphone hears your instrument,
 // each target (a strum on a chord, or a melody note) is judged Perfect / Ok / Bad / Miss on timing and
 // on the chord (or pitch) that sounded. A lane shows targets moving toward the hit line.
+// On the otamatone site the notes are judged from the pitch heard all along (pitchgame.js), not from attacks.
 
-import { chordIndexAt, computeBars, barAt, strumAt } from "./model.js";
+import { chordIndexAt, computeBars, barAt, strumAt, pitchName } from "./model.js";
 import { chordShape } from "./chords.js";
-import { tuningOf, instOf, skey } from "./instrument.js";
+import { INST, tuningOf, instOf, skey } from "./instrument.js";
 import { MicAnalyzer, chroma, templateChroma, cosine, yin, rms } from "./dsp.js";
+import { PitchJudge } from "./pitchgame.js";
 
 const GRADES = ["perfect", "ok", "bad", "miss"];
 const ACC = { perfect: 1, ok: 2 / 3, bad: 1 / 3, miss: 0 };
@@ -40,14 +42,22 @@ export class Practice {
     this.strokes = [];
     this.pending = [];
     this.flash = null;
+    // otamatone: melody only, judged on start timing and/or holding the pitch
+    this.judgeKind = store.get(skey("practice.judge"), "both");
+    this.pj = INST.roll ? new PitchJudge(this, TIMING) : null;
+    if (INST.roll) this.target = "melody";
     this.reset();
   }
+
+  // the microphone hears pitch all along (otamatone) instead of attacks
+  get pitchMode() { return !!this.pj && this.input === "mic" && !!this.mic; }
 
   reset() {
     this.bursts = [];
     this.milestone = null;
-    this.stats = { perfect: 0, ok: 0, bad: 0, miss: 0, early: 0, late: 0, combo: 0, maxCombo: 0, score: 0, accSum: 0, timeAccSum: 0, timeN: 0, n: 0 };
+    this.stats = { perfect: 0, ok: 0, bad: 0, miss: 0, early: 0, late: 0, combo: 0, maxCombo: 0, score: 0, accSum: 0, timeAccSum: 0, timeN: 0, n: 0, holdSum: 0, holdN: 0 };
     this.flash = null;
+    if (this.pj) this.pj.reset();
   }
 
   setScore(score) {
@@ -69,7 +79,8 @@ export class Practice {
         if (t.hidden || t.muted) continue;
         for (const n of t.notes) {
           const bend = n.tech && n.tech[0] === "b" ? +n.tech.slice(1) || 1 : 0;
-          out.push({ col: n.col, kind: "note", midi: tuning[n.string] + (s.capo || 0) + n.fret, bend, label: `${names[n.string]}${n.fret}${bend ? "b" : ""}` });
+          const midi = tuning[n.string] + (s.capo || 0) + n.fret;
+          out.push({ col: n.col, len: n.len, kind: "note", midi, bend, label: INST.roll ? pitchName(midi) : `${names[n.string]}${n.fret}${bend ? "b" : ""}` });
         }
       }
     }
@@ -103,10 +114,11 @@ export class Practice {
     }
     this.strokes = strokes;
     out.sort((a, b) => a.col - b.col);
-    for (const t of out) { t.t = tm.colToTime(t.col); t.grade = null; }
+    for (const t of out) { t.t = tm.colToTime(t.col); t.tEnd = tm.colToTime(t.col + (t.len || 0)); t.grade = null; }
     this.targets = out;
     // chord templates for every chord in the song, to tell the right chord from the others
     this.templates = new Map();
+    if (instOf(s.tuning).roll) return;
     const tuning = tuningOf(s.tuning).strings;
     for (const c of new Set(s.chords.map((c) => c.name))) {
       const sh = chordShape(c, s.tuning, s.chordShapes);
@@ -122,8 +134,13 @@ export class Practice {
 
   // forget judgements from col on (after a seek or when a loop starts again)
   rewind(col) {
-    for (const t of this.targets) if (t.col >= col) t.grade = null;
+    for (const t of this.targets) {
+      if (t.col < col) continue;
+      t.grade = null;
+      for (const k of ["head", "headD", "run", "runStart", "holdN", "holdOk", "segs", "hold"]) delete t[k];
+    }
     this.pending = [];
+    if (this.pj) this.pj.rewind();
   }
 
   // ---------------------------------------------------------------- start / stop
@@ -298,32 +315,65 @@ export class Practice {
     const tg = this.timingGrade(dMs);
     let grade = sound ? worse(sound.grade, tg === "ok" ? "perfect" : tg) : tg;
     if (this.mode === "easy" && sound) grade = sound.grade; // easy: chord/pitch only, like SPRED's easy mode
+    this.count(target, grade, dMs, tg, { heard: sound && sound.heard });
+  }
+
+  // one judged target: counts, combo, the judgement shown and the mark on the sheet. tg: grade of its timing
+  // (null when only holding was judged); opts.flash false when its start was shown already; opts.hold: share
+  // of the note held on pitch (0..1)
+  count(target, grade, dMs, tg, { flash = true, hold = null, heard = null } = {}) {
     target.grade = grade;
     const st = this.stats;
     st[grade]++;
     st.n++;
     st.accSum += ACC[grade];
-    if (grade !== "miss") {
-      st.timeAccSum += ACC[tg];
-      st.timeN++;
-      if (tg !== "perfect") dMs < 0 ? st.early++ : st.late++;
-    } else { st.timeN++; }
+    if (tg) {
+      if (grade !== "miss") {
+        st.timeAccSum += ACC[tg];
+        st.timeN++;
+        if (tg !== "perfect" && dMs !== null) dMs < 0 ? st.early++ : st.late++;
+      } else { st.timeN++; }
+    }
+    if (hold !== null) { st.holdSum += hold; st.holdN++; }
     const breaks = this.mode === "pro" ? grade === "bad" || grade === "miss" : grade === "miss";
     st.combo = breaks ? 0 : st.combo + 1;
     st.maxCombo = Math.max(st.maxCombo, st.combo);
     st.score += Math.round(100 * ACC[grade]);
-    this.flash = { grade, text: LABEL[grade], sub: tg !== "perfect" && grade !== "miss" ? (dMs < 0 ? "EARLY" : "LATE") : "", t: performance.now(), combo: st.combo };
-    this.bursts.push({ t: performance.now(), grade });
+    if (flash) {
+      this.flash = { grade, text: LABEL[grade], sub: tg && tg !== "perfect" && grade !== "miss" && dMs !== null ? (dMs < 0 ? "EARLY" : "LATE") : "", t: performance.now(), combo: st.combo };
+      this.bursts.push({ t: performance.now(), grade, midi: target.midi });
+    }
     if (st.combo && (st.combo === 10 || st.combo === 20 || st.combo === 30 || st.combo % 50 === 0)) this.milestone = { n: st.combo, t: performance.now() };
-    if (sound && sound.heard) this.ui.heard(sound.heard);
+    if (heard) this.ui.heard(heard);
     this.ui.onMark(target.col, grade);
     this.updateCounts();
+  }
+
+  // the start of a note shown before the whole note is judged (otamatone: start and holding judged together)
+  flashOnly(target, grade, d) {
+    const sub = grade !== "perfect" && grade !== "miss" && d !== null ? (d < 0 ? "EARLY" : "LATE") : "";
+    this.flash = { grade, text: LABEL[grade], sub, t: performance.now(), combo: this.stats.combo };
+    this.bursts.push({ t: performance.now(), grade, midi: target.midi });
+  }
+
+  // the note the microphone hears now, with how far off it is (cents), a few times a second
+  showHeard() {
+    const L = this.pj && this.pj.live;
+    if (!L || performance.now() - this.pj.shownAt < 120) return;
+    this.pj.shownAt = performance.now();
+    if (L.m === null) { this.ui.heard("--"); return; }
+    const r = Math.round(L.m), c = Math.round((L.m - r) * 100);
+    this.ui.heard(`${pitchName(r)} ${c >= 0 ? "+" : ""}${c}`);
   }
 
   // while practice mode is on but nothing plays: keep the mic meter and the lane alive
   idle() {
     if (!this.on || this.player.playing) return;
-    if (this.mic) { this.mic.an.takeOnsets(); this.ui.level(this.mic.an.level); }
+    if (this.mic) {
+      this.mic.an.takeOnsets();
+      this.ui.level(this.mic.an.level);
+      if (this.pitchMode) { this.pj.update(this.mic.an); this.showHeard(); }
+    }
     this.drawLane();
     requestAnimationFrame(() => this.idle());
   }
@@ -333,7 +383,14 @@ export class Practice {
     if (!this.on) return;
     const p = this.player;
     const ctx = this.engine.ctx;
-    if (this.mic) {
+    if (this.pitchMode) {
+      const an = this.mic.an;
+      an.takeOnsets();
+      this.ui.level(an.level);
+      this.pj.update(an);
+      this.showHeard();
+      if (p.playing) this.pj.tick(p.scoreTime());
+    } else if (this.mic) {
       const an = this.mic.an;
       for (const o of an.takeOnsets()) this.handleOnset(o.t - this.offsetMs / 1000, an);
       this.ui.level(an.level);
@@ -343,7 +400,7 @@ export class Practice {
         return false;
       });
     }
-    if (p.playing) {
+    if (p.playing && !this.pitchMode) {
       // targets whose window has passed without a strum are missed
       const s = p.scoreTime();
       const win = TIMING[this.mode][2] / 1000 + 0.05;
@@ -372,7 +429,8 @@ export class Practice {
     const st = this.stats;
     const acc = st.n ? Math.round((st.accSum / st.n) * 1000) / 10 : 0;
     const tacc = st.timeN ? Math.round((st.timeAccSum / st.timeN) * 1000) / 10 : 0;
-    this.ui.counts({ ...st, acc, tacc });
+    const hold = st.holdN ? Math.round((st.holdSum / st.holdN) * 1000) / 10 : 0;
+    this.ui.counts({ ...st, acc, tacc, hold });
   }
 
   result() {
@@ -386,6 +444,7 @@ export class Practice {
       fullCombo: st.n > 0 && st.miss === 0 && (this.mode !== "pro" || st.bad === 0),
       mode: this.mode,
       target: this.target,
+      ...(this.pitchMode ? { judge: this.judgeKind, hold: st.holdN ? Math.round((st.holdSum / st.holdN) * 1000) / 10 : null } : {}),
     };
   }
 

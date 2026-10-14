@@ -6,9 +6,9 @@
 <title>우쿨렐레 코드 악보</title>
 <meta name="description" content="유튜브에 맞춰 재생하는 우쿨렐레 코드·TAB 악보. 위쪽에 다음 코드 운지가 뜸.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3v13' stroke='%23a8743f' stroke-width='3'/%3E%3Ccircle cx='16' cy='22' r='8' fill='%23a8743f'/%3E%3Ccircle cx='16' cy='22' r='2.5' fill='%23fff'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/app.css?v=28caaa2120">
+<link rel="stylesheet" href="css/app.css?v=c44f0b3fc1">
 <!-- importmap -->
-<script type="importmap">{"imports":{"./js/audio.js":"./js/audio.js?v=28caaa2120","./js/bridge.js":"./js/bridge.js?v=28caaa2120","./js/chordbar.js":"./js/chordbar.js?v=28caaa2120","./js/chords.js":"./js/chords.js?v=28caaa2120","./js/dashboard.js":"./js/dashboard.js?v=28caaa2120","./js/diagram.js":"./js/diagram.js?v=28caaa2120","./js/drills.js":"./js/drills.js?v=28caaa2120","./js/drillview.js":"./js/drillview.js?v=28caaa2120","./js/dsp.js":"./js/dsp.js?v=28caaa2120","./js/editor.js":"./js/editor.js?v=28caaa2120","./js/fingering.js":"./js/fingering.js?v=28caaa2120","./js/instrument.js":"./js/instrument.js?v=28caaa2120","./js/lane.js":"./js/lane.js?v=28caaa2120","./js/lyrics.js":"./js/lyrics.js?v=28caaa2120","./js/main.js":"./js/main.js?v=28caaa2120","./js/model.js":"./js/model.js?v=28caaa2120","./js/practice.js":"./js/practice.js?v=28caaa2120","./js/records.js":"./js/records.js?v=28caaa2120","./js/sheet.js":"./js/sheet.js?v=28caaa2120","./js/site.js":"./js/site.js?v=28caaa2120","./js/strumfit.js":"./js/strumfit.js?v=28caaa2120","./js/strumgame.js":"./js/strumgame.js?v=28caaa2120","./js/strums.js":"./js/strums.js?v=28caaa2120","./js/strumview.js":"./js/strumview.js?v=28caaa2120","./js/youtube.js":"./js/youtube.js?v=28caaa2120"}}</script>
+<script type="importmap">{"imports":{"./js/audio.js":"./js/audio.js?v=c44f0b3fc1","./js/bridge.js":"./js/bridge.js?v=c44f0b3fc1","./js/chordbar.js":"./js/chordbar.js?v=c44f0b3fc1","./js/chords.js":"./js/chords.js?v=c44f0b3fc1","./js/dashboard.js":"./js/dashboard.js?v=c44f0b3fc1","./js/diagram.js":"./js/diagram.js?v=c44f0b3fc1","./js/drills.js":"./js/drills.js?v=c44f0b3fc1","./js/drillview.js":"./js/drillview.js?v=c44f0b3fc1","./js/dsp.js":"./js/dsp.js?v=c44f0b3fc1","./js/editor.js":"./js/editor.js?v=c44f0b3fc1","./js/fingering.js":"./js/fingering.js?v=c44f0b3fc1","./js/instrument.js":"./js/instrument.js?v=c44f0b3fc1","./js/lane.js":"./js/lane.js?v=c44f0b3fc1","./js/lyrics.js":"./js/lyrics.js?v=c44f0b3fc1","./js/main.js":"./js/main.js?v=c44f0b3fc1","./js/model.js":"./js/model.js?v=c44f0b3fc1","./js/pitchgame.js":"./js/pitchgame.js?v=c44f0b3fc1","./js/pitchlane.js":"./js/pitchlane.js?v=c44f0b3fc1","./js/practice.js":"./js/practice.js?v=c44f0b3fc1","./js/records.js":"./js/records.js?v=c44f0b3fc1","./js/sheet.js":"./js/sheet.js?v=c44f0b3fc1","./js/site.js":"./js/site.js?v=c44f0b3fc1","./js/strumfit.js":"./js/strumfit.js?v=c44f0b3fc1","./js/strumgame.js":"./js/strumgame.js?v=c44f0b3fc1","./js/strums.js":"./js/strums.js?v=c44f0b3fc1","./js/strumview.js":"./js/strumview.js?v=c44f0b3fc1","./js/youtube.js":"./js/youtube.js?v=c44f0b3fc1"}}</script>
 <!-- /importmap -->
 </head>
 <body>
@@ -39,18 +39,19 @@
       <div class="menu">
         <button type="button" class="menu-btn">보기</button>
         <div class="menu-panel">
-          <label><input type="checkbox" data-set="miniDiagrams"> 악보 안 작은 운지 그림</label>
-          <label><input type="checkbox" data-set="showTab"> 멜로디 TAB</label>
-          <label><input type="checkbox" data-set="lead"> 리드 보기 (칠 줄 TAB 크게)</label>
-          <label>칠 줄 <select class="lead-track"></select></label>
+          <label class="chord-only"><input type="checkbox" data-set="miniDiagrams"> 악보 안 작은 운지 그림</label>
+          <label class="chord-only"><input type="checkbox" data-set="showTab"> 멜로디 TAB</label>
+          <label class="chord-only"><input type="checkbox" data-set="lead"> 리드 보기 (칠 줄 TAB 크게)</label>
+          <label class="chord-only">칠 줄 <select class="lead-track"></select></label>
+          <div class="roll-only parts-opts"><b>칠 트랙</b> <small class="hint">켠 트랙만 소리 나고 판정함</small><div class="parts-list"></div><hr></div>
           <label><input type="checkbox" data-set="follow"> 재생 위치 따라 넘기기</label>
-          <label>운지 그림 방향
+          <label class="chord-only">운지 그림 방향
             <select data-set="orient"><option value="h">가로 (A현이 위)</option><option value="v">세로</option></select></label>
-          <label>다음 코드 개수
+          <label class="chord-only">다음 코드 개수
             <select data-set="upcoming"><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
           <label>한 줄 마디 수
             <select data-set="barsPerLine"><option value="0">자동</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
-          <div class="electric-opts" hidden>
+          <div class="electric-opts chord-only" hidden>
             <hr>
             <label><input type="checkbox" data-set="power"> 일렉: 파워코드로 보기</label>
             <label><input type="checkbox" data-set="leadHigh"> 일렉: 멜로디를 원곡 높이로</label>
@@ -64,15 +65,15 @@
       </div>
       <span class="viewtabs" role="group" aria-label="화면">
         <button type="button" class="toggle" data-act="view-sheet" aria-pressed="true">악보</button>
-        <button type="button" class="toggle" data-act="edit" aria-pressed="false">편집</button>
-        <button type="button" class="toggle" data-act="drill" aria-pressed="false">코드 연습</button>
-        <button type="button" class="toggle" data-act="strum" aria-pressed="false">스트럼 연습</button>
+        <button type="button" class="toggle chord-only" data-act="edit" aria-pressed="false">편집</button>
+        <button type="button" class="toggle chord-only" data-act="drill" aria-pressed="false">코드 연습</button>
+        <button type="button" class="toggle chord-only" data-act="strum" aria-pressed="false">스트럼 연습</button>
         <button type="button" class="toggle" data-act="records" aria-pressed="false">기록</button>
       </span>
       <button type="button" data-act="help">도움말</button>
     </nav>
     <button type="button" class="account" data-act="account">로그인</button>
-    <button type="button" class="primary" data-act="transcribe">유튜브로 악보 따기</button>
+    <button type="button" class="primary chord-only" data-act="transcribe">유튜브로 악보 따기</button>
   </header>
 
   <section class="transport" aria-label="재생">
@@ -86,9 +87,9 @@
         <option value="0.8">80%</option><option value="0.9">90%</option><option value="1" selected>100%</option>
         <option value="1.1">110%</option><option value="1.25">125%</option><option value="1.5">150%</option>
       </select></label>
-    <label class="ctl">코드 소리
+    <label class="ctl chord-only">코드 소리
       <select data-opt="chordMode"><option value="pattern">스트럼 패턴</option><option value="change">바뀔 때 한 번</option><option value="off">끔</option></select></label>
-    <button type="button" data-act="strum-pick" title="곡과 마디마다 스트럼 패턴 고르기, 추천 받기">스트럼</button>
+    <button type="button" class="chord-only" data-act="strum-pick" title="곡과 마디마다 스트럼 패턴 고르기, 추천 받기">스트럼</button>
     <label class="ctl"><input type="checkbox" data-opt="melody" checked> 멜로디 소리</label>
     <label class="ctl"><input type="checkbox" data-opt="metronome"> 메트로놈</label>
     <label class="ctl">음량 <input type="range" data-opt="volume" min="0" max="100" value="70"></label>
@@ -101,7 +102,9 @@
     <div class="g-head">
       <button type="button" data-act="g-rules">규칙</button>
       <button type="button" data-act="g-sync">싱크 <b class="g-sync-val">+80 ms</b></button>
-      <label>판정 <select class="g-target">
+      <label class="roll-only" title="시작 박자: 음을 제때 맞는 높이로 시작했는지. 음 유지: 음 길이 동안 맞는 높이를 낸 비율">판정 <select class="g-judge-kind">
+        <option value="both">시작 박자 + 음 유지</option><option value="start">시작 박자만</option><option value="hold">음 유지만</option></select></label>
+      <label class="chord-only">판정 <select class="g-target">
         <option value="beat">코드: 박마다</option><option value="change">코드: 바뀔 때만</option>
         <option value="pattern">코드: 스트럼 패턴</option><option value="melody">멜로디 음</option></select></label>
       <span class="g-modes" role="group" aria-label="난이도">
@@ -118,12 +121,12 @@
       <span class="perfect">Perfect <b data-c="perfect">0</b></span><span class="ok">Ok <b data-c="ok">0</b></span>
       <span class="bad">Bad <b data-c="bad">0</b></span><span class="miss">Miss <b data-c="miss">0</b></span>
       <span>콤보 <b data-c="combo">0</b></span><span>점수 <b data-c="score">0</b></span>
-      <span>정확도 <b data-c="acc">0%</b></span><span>타이밍 <b data-c="tacc">0%</b></span>
+      <span>정확도 <b data-c="acc">0%</b></span><span>타이밍 <b data-c="tacc">0%</b></span><span class="roll-only">음 유지 <b data-c="hold">0%</b></span>
     </div>
     <p class="g-notice">스피커 소리가 마이크로 들어가면 판정이 흔들림. 이어폰 권장.</p>
   </section>
 
-  <div class="cb-wrap">
+  <div class="cb-wrap chord-only">
     <section class="chordbar" aria-label="지금 코드와 다음 코드"></section>
   </div>
 
@@ -195,11 +198,11 @@
     <label class="row">제목 <input type="text" name="title"></label>
     <label class="row">가수 <input type="text" name="artist"></label>
     <label class="row">조 <input type="text" name="key" placeholder="C, Am ..."></label>
-    <label class="row">스트럼 패턴 <input type="text" name="pattern" placeholder="D-DU-UDU" title="8분음표 한 칸에 한 글자: D 다운, U 업, - 쉼"></label>
-    <label class="row">튜닝 <select name="tuning"><option value="standard">High-G (G4 C4 E4 A4)</option><option value="low-g">Low-G (G3 C4 E4 A4)</option></select></label>
+    <label class="row chord-only">스트럼 패턴 <input type="text" name="pattern" placeholder="D-DU-UDU" title="8분음표 한 칸에 한 글자: D 다운, U 업, - 쉼"></label>
+    <label class="row chord-only">튜닝 <select name="tuning"><option value="standard">High-G (G4 C4 E4 A4)</option><option value="low-g">Low-G (G3 C4 E4 A4)</option></select></label>
     <label class="row">YouTube <input type="text" name="video" placeholder="주소 또는 영상 ID"></label>
     <label class="row">싱크 (ms) <input type="number" name="offset" step="10"></label>
-    <label class="row">카포 <input type="number" name="capo" value="0" min="0" max="12" title="소리는 그대로 두고 코드 모양만 쉬운 쪽으로 옮김"></label>
+    <label class="row chord-only">카포 <input type="number" name="capo" value="0" min="0" max="12" title="소리는 그대로 두고 코드 모양만 쉬운 쪽으로 옮김"></label>
     <label class="row">조옮김 (반음) <input type="number" name="transpose" value="0" min="-11" max="11" title="코드와 멜로디를 같이 옮김. 원곡 영상과는 음이 달라짐"></label>
     <p class="hint transpose-hint"></p>
     <div class="row end"><button value="cancel">취소</button><button value="ok" class="primary">적용</button></div>
@@ -225,14 +228,24 @@
 <dialog class="dlg-grules">
   <form method="dialog">
     <h2>게임 모드 판정 규칙</h2>
+    <div class="roll-only">
     <table class="rules">
+      <tr><th></th><th>쉬움</th><th>보통</th><th>어려움</th></tr>
+      <tr><td>맞는 높이</td><td>목표 음에서 120 cent 안, 옥타브는 상관없음</td><td>80 cent 안</td><td>50 cent 안</td></tr>
+      <tr><td>시작 박자 (Perfect / Ok / Bad)</td><td>250 ms 안이면 Perfect</td><td>60 / 110 / 180 ms 안</td><td>35 / 70 / 120 ms 안</td></tr>
+    </table>
+    <p class="hint">cent는 반음의 100분의 1. <b>시작 박자</b>는 맞는 높이를 40 ms 이어서 낸 첫 순간과 음 시각의 차이로 봅니다. 그 범위 밖이거나 높이가 맞지 않으면 Miss. 같은 음이 이어질 때 이미 그 높이를 내고 있었으면 제때로 봅니다.
+      <b>음 유지</b>는 음 시작 직후부터 끝 직전까지 맞는 높이를 낸 비율입니다. «음 유지만»은 85% 이상 Perfect, 60% Ok, 30% Bad, 그 아래 Miss.
+      «시작 박자 + 음 유지»는 시작 판정(Perfect 1, Ok 2/3, Bad 1/3)과 유지 비율을 반씩 더해 90% 이상 Perfect, 65% Ok, 35% Bad, 그 아래 Miss. 점수는 Perfect 100, Ok 67, Bad 33. 어려움은 Bad에서도 콤보가 끊깁니다.</p>
+    </div>
+    <table class="rules chord-only">
       <tr><th>판정</th><th>타이밍 (쉬움 / 보통 / 어려움)</th><th>코드</th><th>멜로디 음높이</th><th>점수</th></tr>
       <tr><td class="perfect">Perfect</td><td>무시 / 60 ms 안 / 35 ms 안</td><td>들린 소리에 가장 가까운 코드가 맞는 코드</td><td>50 cent 안 (어려움 30)</td><td>100</td></tr>
       <tr><td class="ok">Ok</td><td>무시 / 110 ms 안 / 70 ms 안</td><td>가장 가까운 코드와 거의 같음</td><td>100 cent 안 (어려움 60)</td><td>67</td></tr>
       <tr><td class="bad">Bad</td><td>무시 / 180 ms 안 / 120 ms 안</td><td>다른 코드에 더 가까움</td><td>200 cent 안 (어려움 100)</td><td>33</td></tr>
       <tr><td class="miss">Miss</td><td>그 밖이거나 안 침</td><td>많이 다름</td><td>그 밖</td><td>0</td></tr>
     </table>
-    <p class="hint">타이밍이 Ok 범위면 코드 판정을 그대로 두고 EARLY/LATE만 표시합니다. Bad 범위면 최종 판정을 Bad로 낮춥니다. 판정 칸 사이에 친 소리는 감점하지 않습니다. 쉬움은 타이밍을 넓게 보고 코드만 판정합니다. 어려움은 Bad에서도 콤보가 끊깁니다.</p>
+    <p class="hint chord-only">타이밍이 Ok 범위면 코드 판정을 그대로 두고 EARLY/LATE만 표시합니다. Bad 범위면 최종 판정을 Bad로 낮춥니다. 판정 칸 사이에 친 소리는 감점하지 않습니다. 쉬움은 타이밍을 넓게 보고 코드만 판정합니다. 어려움은 Bad에서도 콤보가 끊깁니다.</p>
     <div class="row end"><button value="close">닫기</button></div>
   </form>
 </dialog>
@@ -303,6 +316,6 @@
   </form>
 </dialog>
 
-<script type="module" src="js/main.js?v=28caaa2120"></script>
+<script type="module" src="js/main.js?v=c44f0b3fc1"></script>
 </body>
 </html>

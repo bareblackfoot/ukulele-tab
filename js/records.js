@@ -4,7 +4,7 @@
 import { bridge, bridgeSettings, isRemote } from "./bridge.js";
 import { INST, skey } from "./instrument.js";
 
-// results stay apart per instrument (inst field); the login is shared by the ukulele and the guitar site
+// results stay apart per instrument (inst field); the login is shared by the ukulele, guitar and otamatone sites
 const LOCAL = skey("records");
 const SESSION = "uketab.session";
 const PENDING = skey("records.pending");
@@ -59,7 +59,7 @@ export const records = {
   add(r) {
     r = { ...r, inst: INST.id };
     const all = this.local();
-    const same = all.filter((x) => x.song === r.song && x.target === r.target && x.mode === r.mode);
+    const same = all.filter((x) => x.song === r.song && x.target === r.target && x.mode === r.mode && (x.judge || "") === (r.judge || ""));
     const prevBest = same.length ? Math.max(...same.map((x) => x.score)) : null;
     all.push(r);
     store.set(LOCAL, all.slice(-2000));

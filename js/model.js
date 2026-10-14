@@ -4,7 +4,7 @@
 // The tuning names the instrument (js/instrument.js). Strings count from 0: ukulele G, C, E, A;
 // guitar low E .. high E. A note is {col, len, string, fret}.
 
-import { TUNINGS, transposeChord, capoChoices, speller } from "./chords.js";
+import { TUNINGS, transposeChord, capoChoices, speller, NOTE_NAMES_SHARP } from "./chords.js";
 import { INST, tuningOf, instOf } from "./instrument.js";
 import { melodyToTab } from "./fingering.js";
 
@@ -59,6 +59,7 @@ export function normalizeScore(o) {
   s.tuning = TUNINGS[o.tuning] ? o.tuning : "standard"; // files from before the guitar site are ukulele sheets
   s.capo = Math.max(0, Math.min(12, int(o.capo, 0)));
   const lastString = tuningOf(s.tuning).strings.length - 1;
+  const fretMax = Math.max(24, instOf(s.tuning).maxFret); // the otamatone's one "string" spans E3..C#6
   s.stepsPerBeat = Math.max(1, Math.min(12, int(o.stepsPerBeat, 4)));
   s.tempo = (o.tempo || []).map((t) => ({ col: Math.max(0, int(t.col)), bpm: Number(t.bpm) }))
     .filter((t) => t.bpm >= 10 && t.bpm <= 400);
@@ -83,7 +84,7 @@ export function normalizeScore(o) {
     ...(t.absolute ? { absolute: true } : {}), // notes at the recording's pitch (a solo taken from it): never moved by octaves
     notes: (t.notes || []).map((n) => ({
       col: Math.max(0, int(n.col)), len: Math.max(1, int(n.len, 1)),
-      string: Math.max(0, Math.min(lastString, int(n.string))), fret: Math.max(0, Math.min(24, int(n.fret))),
+      string: Math.max(0, Math.min(lastString, int(n.string))), fret: Math.max(0, Math.min(fretMax, int(n.fret))),
       ...(n.tech ? { tech: String(n.tech).slice(0, 8) } : {}),
     })),
   }));
@@ -197,6 +198,9 @@ export function tabLabel(n, prev = null) {
   return String(n.fret);
 }
 
+// MIDI pitch -> name as SPRED writes it ("C#4")
+export const pitchName = (m) => `${NOTE_NAMES_SHARP[((m % 12) + 12) % 12]}${Math.floor(m / 12) - 1}`;
+
 export function midiOf(note, tuningName, capo = 0) {
   return tuningOf(tuningName).strings[note.string] + capo + note.fret;
 }
@@ -230,7 +234,8 @@ export function toInstrument(score, tuning, fixedCapo = null) {
   delete s.importReport;
   const from = instOf(s.tuning);
   const sounding = s.chords.filter((c) => c.name !== "N.C.").map((c) => transposeChord(c.name, s.capo || 0));
-  const capo = fixedCapo ?? (sounding.length ? capoChoices(sounding, tuning)[0].capo : 0);
+  // a melody-only instrument has no chord shapes to make easy: no capo
+  const capo = fixedCapo ?? (sounding.length && !instOf(tuning).roll ? capoChoices(sounding, tuning)[0].capo : 0);
   retune(s, tuning, capo, 0, null);
   // the key text names the shapes of the old capo ("Gb (카포 6, C 운지)"): write it for the new one
   const key = (s.meta.key || "").replace(/\s*\(.*\)\s*$/, "").trim();
@@ -278,14 +283,20 @@ function spredNotes(track) {
   return { notes: out, skipped };
 }
 
+// what SPRED's three tracks hold (the maker's sheets): the sung melody, the instrument line of the intro and
+// interludes, short runs that lead into a section
+const SPRED_TRACK = { basic: "노래 멜로디 (basic)", optional: "반주 멜로디 (optional)", extra: "덧붙인 음 (extra)" };
+
 export function fromSpred(o, opts = {}) {
+  // SPRED is an otamatone app: on the otamatone site its notes keep their pitch
+  if (INST.roll && opts.octaveShift === undefined) opts = { ...opts, octaveShift: 0 };
   const md = o.musicData || {};
   const cells = (o.globalLines && o.globalLines.cells) || [];
   const g = (row) => cells.filter((c) => c.rowId === row).map((c) => ({ col: c.col, v: parseFloat(c.rawText) }))
     .filter((c) => Number.isFinite(c.v)).sort((a, b) => a.col - b.col);
   const spbCells = g("global-spb");
   const spb = spbCells.length ? spbCells[0].v : 4;
-  const melody = (o.tracks || []).map((t) => ({ id: t.trackId || t.id, name: t.trackName || t.trackId, ...spredNotes(t) }))
+  const melody = (o.tracks || []).map((t) => ({ id: t.trackId || t.id, name: SPRED_TRACK[t.trackName] || t.trackName || t.trackId, ...spredNotes(t) }))
     .filter((t) => t.notes.length);
   return fromPitchData({
     meta: { title: (md.musicTitle || "").trim(), artist: md.musicArtist || "", comment: md.comment || "",

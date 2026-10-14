@@ -188,6 +188,55 @@ export class Engine {
     };
   }
 
+  // the otamatone: a buzzy tone from a small speaker; opening the squeezed mouth lets the high partials out
+  // (the "wa" at the start), a little vibrato once the note is held. from: MIDI pitch of the note just before
+  // when the two are joined (the finger slides on the stem), so the pitch glides and the mouth stays open.
+  ota(midi, when, dur, gain, bus, from = null) {
+    const ctx = this.ctx;
+    const hz = (m) => 440 * 2 ** ((m - 69) / 12);
+    const f = hz(midi);
+    const osc = ctx.createOscillator();
+    if (!this.otaWave) {
+      // odd partials strong like a square wave, even ones weaker
+      const n = 28, re = new Float32Array(n), im = new Float32Array(n);
+      for (let k = 1; k < n; k++) im[k] = (k % 2 ? 1 : 0.35) / k;
+      this.otaWave = ctx.createPeriodicWave(re, im);
+    }
+    osc.setPeriodicWave(this.otaWave);
+    if (from !== null) {
+      osc.frequency.setValueAtTime(hz(from), when);
+      osc.frequency.exponentialRampToValueAtTime(f, when + 0.05);
+    } else osc.frequency.setValueAtTime(f, when);
+    const lfo = ctx.createOscillator(), depth = ctx.createGain();
+    lfo.frequency.value = 5.2;
+    depth.gain.setValueAtTime(0, when);
+    depth.gain.linearRampToValueAtTime(18, when + Math.min(0.35, dur * 0.6));
+    lfo.connect(depth).connect(osc.detune);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.Q.value = 5;
+    const open = Math.min(5200, f * 6 + 900), shut = Math.min(open, f * 1.6);
+    const end = when + Math.max(0.06, dur);
+    lp.frequency.setValueAtTime(from !== null ? open : shut, when);
+    lp.frequency.exponentialRampToValueAtTime(open, when + 0.09);
+    lp.frequency.setTargetAtTime(shut, Math.max(when + 0.09, end - 0.05), 0.05);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, when);
+    g.gain.linearRampToValueAtTime(gain, when + (from !== null ? 0.005 : 0.02));
+    g.gain.setTargetAtTime(0, end, 0.03);
+    osc.connect(lp).connect(g).connect(bus);
+    osc.start(when);
+    lfo.start(when);
+    osc.stop(end + 0.3);
+    lfo.stop(end + 0.3);
+    return {
+      stop(t) {
+        try { g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(0, t, 0.015); osc.stop(t + 0.15); lfo.stop(t + 0.15); } catch (_) { /* already stopped */ }
+      },
+      end,
+    };
+  }
+
   // strum a chord given as MIDI pitches in string order (null = string not played); down starts at string 0
   strumMidis(midis, when = null, dir = "D", vel = 0.3) {
     this.ensure();
@@ -234,11 +283,11 @@ export class Player {
   buildIndex() {
     const s = this.score;
     this.noteAt = new Map();
-    s.tracks.forEach((t) => {
+    s.tracks.forEach((t, ti) => {
       if (t.muted || t.hidden) return;
       for (const n of t.notes) {
         if (!this.noteAt.has(n.col)) this.noteAt.set(n.col, []);
-        this.noteAt.get(n.col).push(n);
+        this.noteAt.get(n.col).push({ ...n, ti });
       }
     });
   }
@@ -283,6 +332,7 @@ export class Player {
     this.nextCol = Math.ceil(col - 1e-6);
     this.melodyVoices = [];
     this.chordVoices = [];
+    this.lastMel = [];
     clearInterval(this.timer);
     this.timer = setInterval(() => this.tick(), 25);
     this.tick();
@@ -356,9 +406,19 @@ export class Player {
       if (this.opts.melody) {
         for (const n of this.noteAt.get(col) || []) {
           const dur = (this.tm.colToTime(n.col + n.len) - this.tm.colToTime(n.col)) / this.rate;
+          const midi = tuning[n.string] + (s.capo || 0) + n.fret;
+          if (INST.roll) {
+            // one voice per track; a note that starts where the one before ends is slid into
+            const old = this.melodyVoices[n.ti], prev = this.lastMel[n.ti];
+            if (old && old.end > when) old.stop(when);
+            const from = prev && prev.endCol >= n.col && prev.midi !== midi ? prev.midi : null;
+            this.melodyVoices[n.ti] = this.engine.ota(midi, when, dur, 0.3, this.engine.melodyBus, from);
+            this.lastMel[n.ti] = { midi, endCol: n.col + n.len };
+            continue;
+          }
           const old = this.melodyVoices[n.string];
           if (old && old.end > when) old.stop(when);
-          this.melodyVoices[n.string] = this.engine.note(tuning[n.string] + (s.capo || 0) + n.fret, when, dur + 0.05, 0.55, this.engine.melodyBus, n.tech || "");
+          this.melodyVoices[n.string] = this.engine.note(midi, when, dur + 0.05, 0.55, this.engine.melodyBus, n.tech || "");
         }
       }
       // chords
@@ -377,14 +437,16 @@ export class Player {
             if (c === "D" || c === "U") dir = c;
             vel = inBar % spb === 0 ? 0.24 : 0.17;
           }
-          if (dir && ch.name !== "N.C.") this.strum(ch.name, dir, when, vel, tuning);
+          if (dir && ch.name !== "N.C.") this.strum(ch.name, dir, when, vel);
         }
       }
       this.nextCol = col + 1;
     }
   }
 
-  strum(name, dir, when, vel, tuning) {
+  strum(name, dir, when, vel) {
+    // a melody-only instrument plays its backing chords on another instrument's shapes
+    const tuning = tuningOf(instOf(this.score.tuning).chordTuning || this.score.tuning).strings;
     const sh = chordShape(name, this.score.tuning, this.score.chordShapes);
     if (!sh) return;
     const order = sh.frets.map((_, i) => i);

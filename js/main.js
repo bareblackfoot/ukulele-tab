@@ -5,6 +5,8 @@ import { INST, INSTRUMENTS, tuningsOf, skey } from "./instrument.js";
 import { SheetView } from "./sheet.js";
 import { ChordBar } from "./chordbar.js";
 import { GameLane } from "./lane.js";
+import { PitchLane } from "./pitchlane.js";
+import { JUDGE_KINDS } from "./pitchgame.js";
 import { Editor } from "./editor.js";
 import { Engine, Player } from "./audio.js";
 import { YouTubeSync, parseVideoId } from "./youtube.js";
@@ -21,6 +23,8 @@ import { ARROW } from "./strums.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+// the page's parts that only chord instruments (or only the otamatone) have are shown by this class
+document.body.classList.add(`inst-${INST.id}`);
 
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (_) { return d; } },
@@ -29,7 +33,8 @@ const store = {
 
 const DEFAULT_SETTINGS = { miniDiagrams: true, showTab: false, follow: true, orient: "h", upcoming: 4, barsPerLine: 0,
   electric: false, power: false, drive: "clean", leadHigh: true, // electric guitar mode (guitar site only)
-  lead: false, leadTrack: "" };                                      // lead view: one line's TAB big
+  lead: false, leadTrack: "",                                        // lead view: one line's TAB big
+  parts: {} };                                                       // otamatone: tracks played (id -> on)
 const settings = { ...DEFAULT_SETTINGS, ...store.get(skey("settings"), {}) };
 
 let score = newScore();
@@ -68,7 +73,7 @@ const editor = new Editor($(".editor"), {
 });
 
 const practice = new Practice(engine, player, {
-  lane: new GameLane($(".g-lane"), () => settings),
+  lane: INST.roll ? new PitchLane($(".g-lane")) : new GameLane($(".g-lane"), () => settings),
   judge: $(".g-judge"),
   combo: $(".g-combo"),
   onMark: (col, grade) => sheet.mark(col, grade),
@@ -78,7 +83,7 @@ const practice = new Practice(engine, player, {
   counts: (st) => {
     for (const el of $$(".g-counts [data-c]")) {
       const k = el.dataset.c;
-      el.textContent = k === "acc" || k === "tacc" ? `${st[k]}%` : String(st[k]);
+      el.textContent = k === "acc" || k === "tacc" || k === "hold" ? `${st[k]}%` : String(st[k]);
     }
   },
   heard: (txt) => { $(".g-heard").textContent = txt; },
@@ -143,11 +148,41 @@ function fillLeadTracks() {
   sel.value = leadId(score);
 }
 
+// otamatone: the tracks switched on in 보기 are played, heard and judged; the others are drawn faint. Like SPRED,
+// only the first (the sung melody) is on until others are switched on.
+const partOn = (t, i) => settings.parts[t.id] ?? i === 0;
+function partsView(src) {
+  const s = normalizeScore(JSON.parse(toJSON(src)));
+  s.tracks.forEach((t, i) => { t.muted = !partOn(t, i); });
+  return s;
+}
+
+function fillParts() {
+  const box = $(".parts-list");
+  if (!box) return;
+  box.replaceChildren(...score.tracks.map((t, i) => {
+    const l = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = partOn(t, i);
+    cb.addEventListener("change", () => {
+      settings.parts = { ...settings.parts, [t.id]: cb.checked };
+      store.set(skey("settings"), settings);
+      showScore();
+      updatePosition(player.position());
+    });
+    l.append(cb, ` ${t.name} (${t.notes.length}음)`);
+    return l;
+  }));
+}
+
 // hand the sheet (or its electric view) to everything that shows or plays it
 function showScore() {
   shown = electricOn() ? electricView(score) : score;
   if (settings.lead) shown = leadView(shown);
+  if (INST.roll) shown = partsView(shown);
   fillLeadTracks();
+  fillParts();
   engine.setTone(electricOn() ? settings.drive : "acoustic");
   player.setScore(shown);
   practice.setScore(shown);
@@ -505,7 +540,6 @@ const actions = {
   details: () => openDetails(),
   help: () => window.open("help.html", "_blank", "noopener"),
   // the ukulele site and the guitar site sit next to each other on GitHub Pages
-  "other-site": () => { location.href = INST.id === "guitar" ? "../ukulele-tab/" : "../guitar-tab/"; },
   "kind-acoustic": () => setKind(false),
   "kind-electric": () => setKind(true),
   transcribe: () => openTranscribe(),
@@ -556,6 +590,7 @@ function setView(v) {
 
 function syncPracticeControls() {
   $(".g-target").value = practice.target;
+  $(".g-judge-kind").value = practice.judgeKind;
   $(".g-input").value = practice.input;
   $$(".g-modes [data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === practice.mode)));
   const v = practice.offsetMs;
@@ -588,6 +623,10 @@ async function togglePractice(force) {
   updatePosition(player.position());
 }
 
+$(".g-judge-kind").addEventListener("change", (e) => {
+  practice.judgeKind = JUDGE_KINDS[e.target.value] ? e.target.value : "both";
+  store.set(skey("practice.judge"), practice.judgeKind);
+});
 $(".g-target").addEventListener("change", (e) => {
   practice.target = e.target.value;
   store.set(skey("practice.target"), practice.target);
@@ -656,11 +695,12 @@ function showResult() {
     time: Date.now(), song: songKey(score), title: score.meta.title || "제목 없음", artist: score.meta.artist || "",
     mode: r.mode, target: r.target, rate: player.rate, score: r.score, acc: r.acc, tacc: r.tacc, maxCombo: r.maxCombo,
     perfect: r.perfect, ok: r.ok, bad: r.bad, miss: r.miss, early: r.early, late: r.late, n: r.n, total: r.total, fullCombo: r.fullCombo,
+    ...(r.judge ? { judge: r.judge, hold: r.hold } : {}),
   };
   const prevBest = records.add(rec);
   const dlg = $(".dlg-gresult");
   const modeName = { easy: "쉬움", std: "보통", pro: "어려움" }[r.mode];
-  const targetName = { beat: "코드 박마다", change: "코드 바뀔 때", pattern: "스트럼 패턴", melody: "멜로디" }[r.target];
+  const targetName = r.judge ? JUDGE_KINDS[r.judge] : { beat: "코드 박마다", change: "코드 바뀔 때", pattern: "스트럼 패턴", melody: "멜로디" }[r.target];
   const rank = rankOf(r.acc);
   const best = prevBest === null ? "" : r.score > prevBest ? `<span class="gr-best">최고 기록! +${r.score - prevBest}</span>` : `<span class="hint">최고 ${prevBest}점</span>`;
   dlg.querySelector(".gr-meta").innerHTML = `<span class="gr-rank ${rank}">${rank}</span>${escHtml(score.meta.title || "제목 없음")} · ${modeName} · ${targetName}` +
@@ -668,7 +708,8 @@ function showResult() {
     (records.session() ? "" : ` <span class="hint">이 브라우저에만 저장됨. 로그인하면 계정에 올라감</span>`);
   const cell = (label, v, cls = "") => `<div><small>${label}</small><b class="${cls}">${v}</b></div>`;
   dlg.querySelector(".gr-grid").innerHTML = [
-    cell("정확도", `${r.acc}%`), cell("타이밍 정확도", `${r.tacc}%`), cell("점수", r.score), cell("최대 콤보", r.maxCombo),
+    cell("정확도", `${r.acc}%`), r.judge === "hold" ? "" : cell("타이밍 정확도", `${r.tacc}%`),
+    r.hold === null || r.hold === undefined ? "" : cell("음 유지", `${r.hold}%`), cell("점수", r.score), cell("최대 콤보", r.maxCombo),
     cell("Perfect", r.perfect, "perfect"), cell("Ok", r.ok, "ok"), cell("Bad", r.bad, "bad"), cell("Miss", r.miss, "miss"),
     cell("빠름 (EARLY)", r.early), cell("늦음 (LATE)", r.late), cell("판정한 수", `${r.n}/${r.total}`),
   ].join("");
@@ -717,7 +758,19 @@ document.addEventListener("keydown", (e) => {
 
 // ---------------------------------------------------------------- files
 
-$("[data-act=other-site]").textContent = INST.id === "guitar" ? "우쿨렐레 악보 사이트로" : "기타 악보 사이트로";
+// links to the sites of the other instruments, in place of the one button in the page
+{
+  const btn = $("[data-act=other-site]");
+  for (const it of Object.values(INSTRUMENTS)) {
+    if (it.id === INST.id) continue;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = `${it.name} 악보 사이트로`;
+    b.addEventListener("click", () => { location.href = it.url; });
+    btn.before(b);
+  }
+  btn.remove();
+}
 
 syncKind();
 $(".lead-track").addEventListener("change", (e) => {
@@ -760,19 +813,21 @@ function askImportOptions(defTuning = INST.defaultTuning) {
 async function openObject(obj, sourceName, opts) {
   rememberSource(null);
   const fname = obj && obj.format && (obj.format.name || obj.format.formatName);
-  if ((fname === "spred-sheet" || fname === "ukulele-transcription") && !opts) {
+  // the otamatone has one tuning, and SPRED notes keep their pitch there: nothing to ask
+  if ((fname === "spred-sheet" || fname === "ukulele-transcription") && !opts && !INST.roll) {
     opts = await askImportOptions(ownTuning(obj.tuning));
     if (!opts) return;
   }
   const s = loadAnyFormat(obj, opts || {});
-  if (sourceName && !s.meta.title) s.meta.title = sourceName.replace(/\.(uke\.|guitar\.)?json$/i, "");
+  if (sourceName && !s.meta.title) s.meta.title = sourceName.replace(/\.(uke\.|guitar\.|ota\.)?json$/i, "");
   setScore(s, { msg: describeImport(s) });
   seek(0);
 }
 
 function describeImport(s) {
   const parts = [];
-  if (s.converted) parts.push(`${INSTRUMENTS[s.converted.from].name} 악보를 ${INST.name} 코드로 옮김${s.converted.capo ? ` (카포 ${s.converted.capo})` : ""}`);
+  if (s.converted) parts.push(INST.roll ? `${INSTRUMENTS[s.converted.from].name} 악보의 멜로디를 오타마톤 음으로 옮김`
+    : `${INSTRUMENTS[s.converted.from].name} 악보를 ${INST.name} 코드로 옮김${s.converted.capo ? ` (카포 ${s.converted.capo})` : ""}`);
   for (const r of s.importReport || []) {
     const bits = [];
     if (r.shift) bits.push(`멜로디를 ${r.shift > 0 ? "" : "-"}${Math.abs(r.shift / 12)}옥타브 옮김`);

@@ -1,14 +1,17 @@
 // Chord sheet view: bars in lines (4 per line on wide screens), chord names with small diagrams above
 // the line, lyrics below, optional melody tab. Highlights the bar being played.
+// A melody-only instrument (the otamatone) gets pitch rows instead, like SPRED: time across, one row per
+// semitone (higher notes higher), each note a bar on its row.
 
-import { computeBars, distinctChords, barAt, tabLabel } from "./model.js";
+import { computeBars, distinctChords, barAt, tabLabel, midiOf, pitchName } from "./model.js";
 import { diagramSVG } from "./diagram.js";
-import { tuningOf } from "./instrument.js";
+import { INST, tuningOf } from "./instrument.js";
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const STRUM_ARROW = { D: "↓", U: "↑", "-": "·", x: "×", X: "×" };
 const strumArrows = (p) => p.split("").map((c) => STRUM_ARROW[c] || c).join(" ");
 export const SHEET_MAX_W = 980; // lines get hard to follow when they run across a wide monitor
+const BLACK = new Set([1, 3, 6, 8, 10]);
 
 export class SheetView {
   constructor(root, { onSeek, onStrum } = {}) {
@@ -21,10 +24,13 @@ export class SheetView {
     this.curBar = -1;
     this.curLine = -1;
     this.follow = true;
+    this.pad = 7;       // space inside a bar before its first column and after its last
     root.addEventListener("click", (e) => this.handleClick(e));
   }
 
   render(score, settings) {
+    if (INST.roll) return this.renderRoll(score, settings);
+    this.pad = 7;
     this.score = score;
     this.settings = settings;
     const bars = (this.bars = computeBars(score));
@@ -175,12 +181,112 @@ export class SheetView {
       parts.push(`<div class="sheet-line" data-line="${L}"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${under}${g}</svg></div>`);
     }
     this.root.innerHTML = parts.join("");
+    this.finishRender(54);
+  }
+
+  finishRender(markY) {
     this.lines = [...this.root.querySelectorAll(".sheet-line")].map((el) => ({
-      el, svg: el.querySelector("svg"), cursor: el.querySelector(".cursor"),
+      el, svg: el.querySelector("svg"), cursor: el.querySelector(".cursor"), markY: +(el.dataset.marky || markY),
     }));
     this.barRects = [...this.root.querySelectorAll(".bar-hl")];
     this.curBar = -1;
     this.curLine = -1;
+  }
+
+  // SPRED-like pitch rows: each line shows the rows its notes use (one more above and below)
+  renderRoll(score, settings) {
+    this.score = score;
+    this.settings = settings;
+    this.pad = 0;
+    const bars = (this.bars = computeBars(score));
+    const W = Math.max(320, Math.min(SHEET_MAX_W, this.root.clientWidth - 24));
+    const lenCount = new Map();
+    for (const b of bars) lenCount.set(b.len, (lenCount.get(b.len) || 0) + 1);
+    const mainLen = [...lenCount.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    const perLine = settings.barsPerLine || (W >= 760 ? 4 : W >= 540 ? 3 : 2);
+    const lines = [];
+    let i0 = 0;
+    if (bars.length > 1 && bars[0].len < mainLen) i0 = 1; // pickup bar goes in front of the first line
+    for (let i = i0; i < bars.length; i += perLine) lines.push(bars.slice(i === i0 && i0 ? 0 : i, i + perLine));
+    if (!lines.length) lines.push(bars);
+    const left = 34, right = 8, rowH = W >= 540 ? 10 : 9, top = 18;
+    const spb = score.stepsPerBeat;
+    const tracks = score.tracks.map((t, ti) => ({ t, ti })).filter(({ t }) => !t.hidden);
+    const notes = tracks.flatMap(({ t, ti }) => t.notes.map((n) => ({ col: n.col, len: n.len, m: midiOf(n, score.tuning, score.capo || 0), ti, off: !!t.muted })));
+    notes.sort((a, b) => a.col - b.col);
+    const all = notes.filter((n) => !n.off).map((n) => n.m);
+    const sectionAt = new Map(score.sections.map((s) => [s.col, s.text]));
+    const bpm = score.tempo[0].bpm;
+    const parts = [`<header class="sheet-head">
+      <h1>${esc(score.meta.title || "제목 없음")}</h1>
+      <div class="sub">${esc(score.meta.artist || "")}</div>
+      <div class="chips">
+        ${score.meta.key ? `<span>조 ${esc(score.meta.key)}</span>` : ""}
+        <span>${Math.round(bpm * 10) / 10} BPM${score.tempo.length > 1 ? " (바뀜)" : ""}</span>
+        <span>${Math.round(mainLen / spb)}/4</span>
+        ${all.length ? `<span title="켠 트랙의 가장 낮은 음과 높은 음">음역 ${pitchName(Math.min(...all))}~${pitchName(Math.max(...all))}</span>` : ""}
+      </div>
+    </header>`];
+    this.geo = [];
+    let ni = 0, li = 0, prevRange = all.length ? [Math.min(...all), Math.max(...all)] : [60, 67];
+    lines.forEach((lb, L) => {
+      const start = lb[0].start, end = lb[lb.length - 1].start + lb[lb.length - 1].len;
+      while (ni < notes.length && notes[ni].col + notes[ni].len <= start && notes[ni].col < start) ni++;
+      const inLine = [];
+      for (let j = ni; j < notes.length && notes[j].col < end; j++) if (notes[j].col + notes[j].len > start) inLine.push(notes[j]);
+      let lo = inLine.length ? Math.min(...inLine.map((n) => n.m)) - 1 : prevRange[0];
+      let hi = inLine.length ? Math.max(...inLine.map((n) => n.m)) + 1 : prevRange[1];
+      while (hi - lo < 6) { hi++; if (hi - lo < 6) lo--; }
+      prevRange = [lo + 1, hi - 1];
+      const rows = hi - lo + 1, rowsTop = top, rowsBot = rowsTop + rows * rowH;
+      const hasLyr = score.lyrics.some((l) => l.col >= start && l.col < end);
+      const H = rowsBot + (hasLyr ? 22 : 8);
+      const units = lb.reduce((a, b) => a + b.len, 0);
+      const unit = (W - left - right) / Math.max(units, perLine * mainLen);
+      const xOf = (col) => left + (col - start) * unit;
+      const yOf = (m) => rowsTop + (hi - m) * rowH;
+      let under = "", g = "";
+      // rows: black keys shaded, names on the left
+      for (let m = hi; m >= lo; m--) {
+        const y = yOf(m);
+        if (BLACK.has(((m % 12) + 12) % 12)) under += `<rect class="roll-black" x="${left}" y="${y}" width="${xOf(end) - left}" height="${rowH}"/>`;
+        if (m % 12 === 0) g += `<line class="roll-c" x1="${left}" y1="${y + rowH}" x2="${xOf(end)}" y2="${y + rowH}"/>`;
+        g += `<text class="roll-name${m % 12 === 0 ? " c" : ""}" x="${left - 3}" y="${y + rowH - 2}" text-anchor="end">${pitchName(m)}</text>`;
+      }
+      lb.forEach((bar, k) => {
+        const x0 = xOf(bar.start), x1 = xOf(bar.start + bar.len);
+        this.geo[bar.index] = { line: L, x0, x1 };
+        under += `<rect class="bar-hl" data-bar="${bar.index}" x="${x0}" y="${rowsTop - 16}" width="${x1 - x0}" height="${H - rowsTop + 14}"/>`;
+        for (let b = spb; b < bar.len; b += spb) g += `<line class="roll-beat" x1="${xOf(bar.start + b)}" y1="${rowsTop}" x2="${xOf(bar.start + b)}" y2="${rowsBot}"/>`;
+        g += `<line class="barline" x1="${x1}" y1="${rowsTop}" x2="${x1}" y2="${rowsBot}"/>`;
+        if (k === 0) g += `<line class="barline" x1="${x0}" y1="${rowsTop}" x2="${x0}" y2="${rowsBot}"/>`;
+        g += `<text class="barno" x="${x0 + 2}" y="${rowsTop - 5}">${bar.index + 1}</text>`;
+        if (sectionAt.has(bar.start)) g += `<text class="sect" x="${x0 + 22}" y="${rowsTop - 5}">${esc(sectionAt.get(bar.start))}</text>`;
+      });
+      g += `<line class="roll-edge" x1="${left}" y1="${rowsTop}" x2="${xOf(end)}" y2="${rowsTop}"/><line class="roll-edge" x1="${left}" y1="${rowsBot}" x2="${xOf(end)}" y2="${rowsBot}"/>`;
+      // notes (a note running into the next line is drawn up to the line's end and again on the next line)
+      for (const n of inLine) {
+        const xa = Math.max(xOf(start), xOf(n.col)) + 0.5, xb = Math.min(xOf(end), xOf(n.col + n.len)) - 0.5, y = yOf(n.m);
+        g += `<rect class="roll-note t${n.ti % 3}${n.off ? " off" : ""}" x="${xa}" y="${y + 1}" width="${Math.max(2, xb - xa)}" height="${rowH - 2}" rx="2"/>`;
+        if (xb - xa >= 19 && n.col >= start) g += `<text class="roll-label${n.off ? " off" : ""}" x="${xa + 2}" y="${y + rowH - 2.2}">${pitchName(n.m)}</text>`;
+      }
+      // lyrics
+      if (hasLyr) {
+        while (li < score.lyrics.length && score.lyrics[li].col < start) li++;
+        let lyricEnd = -1e9;
+        for (let j = li; j < score.lyrics.length && score.lyrics[j].col < end; j++) {
+          const l = score.lyrics[j];
+          const w = [...l.text].reduce((a, ch) => a + (ch.charCodeAt(0) > 0x2e80 ? 12.5 : 7.2), 0);
+          const x = Math.max(xOf(l.col), lyricEnd + 1);
+          g += `<text class="lyr" x="${x}" y="${rowsBot + 16}">${esc(l.text)}</text>`;
+          lyricEnd = x + w;
+        }
+      }
+      g += `<line class="cursor" x1="0" y1="${rowsTop - 14}" x2="0" y2="${H - 2}" visibility="hidden"/>`;
+      parts.push(`<div class="sheet-line roll" data-line="${L}" data-marky="${rowsBot + 4}"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${under}${g}</svg></div>`);
+    });
+    this.root.innerHTML = parts.join("");
+    this.finishRender(54);
   }
 
   setPosition(col, playing) {
@@ -199,7 +305,7 @@ export class SheetView {
       this.lines[geo.line].cursor.setAttribute("visibility", "visible");
       if (playing && this.follow) this.scrollToLine(geo.line);
     }
-    const x = geo.x0 + 7 + ((col - bar.start) / bar.len) * (geo.x1 - geo.x0 - 14);
+    const x = geo.x0 + this.pad + ((col - bar.start) / bar.len) * (geo.x1 - geo.x0 - 2 * this.pad);
     const c = this.lines[geo.line].cursor;
     c.setAttribute("x1", x);
     c.setAttribute("x2", x);
@@ -211,12 +317,12 @@ export class SheetView {
     const bar = barAt(this.bars, col);
     const geo = this.geo[bar.index];
     if (!geo) return;
-    const x = geo.x0 + 7 + ((col - bar.start) / bar.len) * (geo.x1 - geo.x0 - 14);
+    const x = geo.x0 + this.pad + ((col - bar.start) / bar.len) * (geo.x1 - geo.x0 - 2 * this.pad);
     const svg = this.lines[geo.line].svg;
     const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
     c.setAttribute("class", `jm ${grade}`);
     c.setAttribute("cx", x);
-    c.setAttribute("cy", 50 + 4);
+    c.setAttribute("cy", this.lines[geo.line].markY);
     c.setAttribute("r", 4);
     svg.appendChild(c);
   }
@@ -244,7 +350,7 @@ export class SheetView {
     const idx = this.geo.findIndex((g) => g && g.line === L && x >= g.x0 && x < g.x1);
     if (idx < 0) return;
     const bar = this.bars[idx], g = this.geo[idx];
-    const frac = Math.min(1, Math.max(0, (x - g.x0 - 7) / (g.x1 - g.x0 - 14)));
+    const frac = Math.min(1, Math.max(0, (x - g.x0 - this.pad) / (g.x1 - g.x0 - 2 * this.pad)));
     const spb = this.score.stepsPerBeat;
     const col = bar.start + Math.floor((frac * bar.len) / spb) * spb;
     this.onSeek(col);

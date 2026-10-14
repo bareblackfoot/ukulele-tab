@@ -1,0 +1,142 @@
+// Otamatone game mode: judged from the pitch the microphone hears, not from attacks (on the stem a note is
+// often slid into from the one before, with no new attack).
+//   start: when the note's pitch is first held for two frames (40 ms) near the note's time, judged on timing
+//          like the other game modes. Being on that pitch already (the same pitch again, joined to the note
+//          before) counts as on time.
+//   hold: the share of frames on the note's pitch from just after its start to just before its end.
+//   kind (chosen in the game panel): "both" (start and hold count half each), "start", "hold"
+
+import { yin, rms } from "./dsp.js";
+
+export const PITCH_TOL = { easy: 120, std: 80, pro: 50 }; // cents from the note that still count as on it
+export const JUDGE_KINDS = { both: "시작 박자 + 음 유지", start: "시작 박자만", hold: "음 유지만" };
+const ACC = { perfect: 1, ok: 2 / 3, bad: 1 / 3, miss: 0 };
+const FRAME = 2048, HOP = 0.02;
+
+export class PitchJudge {
+  // timing: the timing windows of the game modes (TIMING in practice.js)
+  constructor(practice, timing) {
+    this.p = practice;
+    this.timing = timing;
+    this.reset();
+  }
+
+  reset() {
+    this.nextT = null;   // audio-clock time of the next analysis window
+    this.open = 0;       // first target not finished
+    this.trail = [];     // {st: score time, m: MIDI (fractional) or null} heard while playing
+    this.live = null;    // {m, at} the latest pitch, also while stopped
+    this.shownAt = 0;
+  }
+
+  get kind() { return this.p.judgeKind; }
+
+  near(m, midi) {
+    let c = (m - midi) * 100;
+    if (this.p.mode === "easy") c = (((c % 1200) + 1800) % 1200) - 600; // any octave counts
+    return Math.abs(c) <= PITCH_TOL[this.p.mode];
+  }
+
+  // every animation frame: pitch of the new microphone sound, 50 frames a second
+  update(an) {
+    const p = this.p, pl = p.player;
+    const dur = FRAME / an.sr;
+    if (this.nextT === null || this.nextT < an.lastT - 1) this.nextT = an.lastT - dur;
+    while (this.nextT + dur <= an.lastT) {
+      const x = an.window(this.nextT, FRAME);
+      const mid = this.nextT + dur / 2;
+      this.nextT += HOP;
+      let m = null;
+      if (x && rms(x) > Math.max(an.noise * 4, 0.003)) {
+        const { f0, clarity } = yin(x, an.sr, 130, 1400);
+        if (clarity > 0.6 && f0 > 0) m = 69 + 12 * Math.log2(f0 / 440);
+      }
+      this.live = { m, at: performance.now() };
+      if (!pl.playing) continue;
+      const tc = mid - p.offsetMs / 1000; // when it was played: the microphone delay taken off
+      if (tc < pl.startCtx) continue;
+      const st = p.scoreTimeOf(tc);
+      this.trail.push({ st, m });
+      this.feed(st, m);
+    }
+    if (this.trail.length > 500) this.trail.splice(0, this.trail.length - 500);
+  }
+
+  feed(st, m) {
+    const p = this.p, ts = p.targets, rate = p.player.rate || 1;
+    const win = (this.timing[p.mode][2] / 1000) * rate; // the Bad window, in score seconds
+    const kind = this.kind;
+    for (let k = this.open; k < ts.length; k++) {
+      const g = ts[k];
+      if (g.t - win > st) break;
+      if (g.grade && g.grade !== "pending") continue;
+      const on = m !== null && this.near(m, g.midi);
+      if (kind !== "hold" && !g.head) {
+        if (on && st <= g.t + win) {
+          if (!g.run) { g.run = 1; g.runStart = st; } else g.run++;
+          if (g.run >= 2) {
+            const prev = ts[k - 1];
+            const joined = g.runStart < g.t - win + 0.03 && prev && prev.midi === g.midi && prev.tEnd >= g.t - 0.02;
+            this.head(g, joined ? 0 : (g.runStart - g.t) / rate);
+          }
+        } else if (!on) g.run = 0;
+        if (!g.head && st > g.t + win) this.head(g, null);
+      }
+      const len = g.tEnd - g.t;
+      if (st >= g.t + Math.min(0.06, len * 0.2) && st <= g.tEnd - Math.min(0.08, len * 0.25)) {
+        g.holdN = (g.holdN || 0) + 1;
+        if (on) {
+          g.holdOk = (g.holdOk || 0) + 1;
+          const segs = g.segs || (g.segs = []);
+          const last = segs[segs.length - 1];
+          if (last && st - last[1] < 0.05 * rate) last[1] = st; else segs.push([st, st]);
+        }
+      }
+      if (kind === "start" ? !!g.head : st > g.tEnd + 0.02 && (kind === "hold" || !!g.head)) this.finish(g);
+    }
+    while (this.open < ts.length && ts[this.open].grade && ts[this.open].grade !== "pending") this.open++;
+  }
+
+  // the start of a note: d seconds (real time) from its time, or null when it never came
+  head(g, d) {
+    const p = this.p;
+    g.head = d === null ? "miss" : p.mode === "easy" ? "perfect" : p.timingGrade(d * 1000);
+    g.headD = d;
+    g.grade = "pending";
+    if (this.kind === "both") p.flashOnly(g, g.head, d);
+  }
+
+  finish(g) {
+    const kind = this.kind;
+    const h = g.head || "miss";
+    const r = g.holdN ? g.holdOk / g.holdN || 0 : h !== "miss" ? 1 : 0;
+    g.hold = r;
+    let grade;
+    if (kind === "start") grade = h;
+    else if (kind === "hold") grade = r >= 0.85 ? "perfect" : r >= 0.6 ? "ok" : r >= 0.3 ? "bad" : "miss";
+    else {
+      const a = 0.5 * ACC[h] + 0.5 * r;
+      grade = a >= 0.9 ? "perfect" : a >= 0.65 ? "ok" : a >= 0.35 ? "bad" : "miss";
+    }
+    this.p.count(g, grade, g.headD == null ? null : g.headD * 1000, kind === "hold" ? null : h,
+      { flash: kind !== "both", hold: kind === "start" ? null : r });
+  }
+
+  // notes long past whose sound never came (the microphone stopped): finished as they are
+  tick(now) {
+    const ts = this.p.targets, rate = this.p.player.rate || 1;
+    for (let k = this.open; k < ts.length; k++) {
+      const g = ts[k];
+      if (g.t > now) break;
+      if (g.grade && g.grade !== "pending") continue;
+      if (g.tEnd + 0.6 * rate < now) this.finish(g);
+    }
+    while (this.open < ts.length && ts[this.open].grade && ts[this.open].grade !== "pending") this.open++;
+  }
+
+  rewind() {
+    this.open = 0;
+    this.trail = [];
+    this.nextT = null;
+  }
+}

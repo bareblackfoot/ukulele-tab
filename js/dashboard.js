@@ -1,6 +1,7 @@
 // "기록" view: game results per song, best score, how it changed over time.
 
 import { records, rankOf } from "./records.js";
+import { JUDGE_KINDS } from "./pitchgame.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const day = (t) => new Date(t).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" });
@@ -94,7 +95,7 @@ export class Dashboard {
     const dots = p.map((r, i) => `<circle class="pt" cx="${x(i)}" cy="${y(r.acc)}" r="5" data-i="${i}"/>`).join("");
     const axis = `<text class="gt" x="${L}" y="${H - 8}">${day(p[0].time)}</text><text class="gt" x="${W - R}" y="${H - 8}" text-anchor="end">${day(p[p.length - 1].time)}</text>`;
     const table = p.slice().reverse().map((r) => `<tr><td>${new Date(r.time).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}</td>
-      <td>${esc(TARGET[r.target] || r.target)} · ${esc(MODE[r.mode] || r.mode)}${r.rate && r.rate !== 1 ? ` · ${Math.round(r.rate * 100)}%` : ""}</td>
+      <td>${esc(r.judge ? JUDGE_KINDS[r.judge] || r.judge : TARGET[r.target] || r.target)} · ${esc(MODE[r.mode] || r.mode)}${r.rate && r.rate !== 1 ? ` · ${Math.round(r.rate * 100)}%` : ""}</td>
       <td class="num"><span class="rk ${rankOf(r.acc)}">${rankOf(r.acc)}</span> ${r.acc}%</td><td class="num">${r.score}</td><td class="num">${r.maxCombo}</td>
       <td class="num">${r.perfect}/${r.ok}/${r.bad}/${r.miss}</td></tr>`).join("");
     this.plays = p;
