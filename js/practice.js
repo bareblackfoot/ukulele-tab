@@ -8,6 +8,7 @@ import { chordShape } from "./chords.js";
 import { INST, tuningOf, instOf, skey } from "./instrument.js";
 import { MicAnalyzer, chroma, templateChroma, cosine, yin, rms } from "./dsp.js";
 import { PitchJudge } from "./pitchgame.js";
+import { trackKind } from "./pitchcolor.js";
 
 const GRADES = ["perfect", "ok", "bad", "miss"];
 const ACC = { perfect: 1, ok: 2 / 3, bad: 1 / 3, miss: 0 };
@@ -55,7 +56,8 @@ export class Practice {
   reset() {
     this.bursts = [];
     this.milestone = null;
-    this.stats = { perfect: 0, ok: 0, bad: 0, miss: 0, early: 0, late: 0, combo: 0, maxCombo: 0, score: 0, accSum: 0, timeAccSum: 0, timeN: 0, n: 0, holdSum: 0, holdN: 0 };
+    this.stats = { perfect: 0, ok: 0, bad: 0, miss: 0, early: 0, late: 0, combo: 0, maxCombo: 0, score: 0, accSum: 0, timeAccSum: 0, timeN: 0, n: 0, holdSum: 0, holdN: 0,
+      dSum: 0, dN: 0, centSum: 0, centN: 0 }; // signed: how late the starts came (ms), how high the notes were (cent)
     this.flash = null;
     if (this.pj) this.pj.reset();
   }
@@ -75,14 +77,15 @@ export class Practice {
     const out = [];
     if (this.target === "melody") {
       const { strings: tuning, names } = tuningOf(s.tuning);
-      for (const t of s.tracks) {
-        if (t.hidden || t.muted) continue;
+      s.tracks.forEach((t, ti) => {
+        if (t.hidden || t.muted) return;
+        const tk = trackKind(t, ti); // which of SPRED's tracks: the colour of its notes
         for (const n of t.notes) {
           const bend = n.tech && n.tech[0] === "b" ? +n.tech.slice(1) || 1 : 0;
           const midi = tuning[n.string] + (s.capo || 0) + n.fret;
-          out.push({ col: n.col, len: n.len, kind: "note", midi, bend, label: INST.roll ? pitchName(midi) : `${names[n.string]}${n.fret}${bend ? "b" : ""}` });
+          out.push({ col: n.col, len: n.len, kind: "note", midi, bend, tk, label: INST.roll ? pitchName(midi) : `${names[n.string]}${n.fret}${bend ? "b" : ""}` });
         }
-      }
+      });
     }
     // the strokes of the strum pattern (as playback strums them, chucks too) are what the lane shows; the
     // targets are all of them («스트럼 패턴»), the first one in each beat («박마다») or the first one of each
@@ -137,7 +140,7 @@ export class Practice {
     for (const t of this.targets) {
       if (t.col < col) continue;
       t.grade = null;
-      for (const k of ["head", "headD", "run", "runStart", "holdN", "holdOk", "segs", "hold"]) delete t[k];
+      for (const k of ["head", "headD", "run", "runStart", "holdN", "holdOk", "segs", "hold", "cs"]) delete t[k];
     }
     this.pending = [];
     if (this.pj) this.pj.rewind();
@@ -320,8 +323,8 @@ export class Practice {
 
   // one judged target: counts, combo, the judgement shown and the mark on the sheet. tg: grade of its timing
   // (null when only holding was judged); opts.flash false when its start was shown already; opts.hold: share
-  // of the note held on pitch (0..1)
-  count(target, grade, dMs, tg, { flash = true, hold = null, heard = null } = {}) {
+  // of the note held on pitch (0..1); opts.cents: how high it was played on average (otamatone)
+  count(target, grade, dMs, tg, { flash = true, hold = null, heard = null, cents = null } = {}) {
     target.grade = grade;
     const st = this.stats;
     st[grade]++;
@@ -335,12 +338,14 @@ export class Practice {
       } else { st.timeN++; }
     }
     if (hold !== null) { st.holdSum += hold; st.holdN++; }
+    if (tg && grade !== "miss" && dMs !== null) { st.dSum += dMs; st.dN++; }
+    if (cents !== null) { st.centSum += cents; st.centN++; }
     const breaks = this.mode === "pro" ? grade === "bad" || grade === "miss" : grade === "miss";
     st.combo = breaks ? 0 : st.combo + 1;
     st.maxCombo = Math.max(st.maxCombo, st.combo);
     st.score += Math.round(100 * ACC[grade]);
     if (flash) {
-      this.flash = { grade, text: LABEL[grade], sub: tg && tg !== "perfect" && grade !== "miss" && dMs !== null ? (dMs < 0 ? "EARLY" : "LATE") : "", t: performance.now(), combo: st.combo };
+      this.flash = { grade, text: LABEL[grade], sub: tg && tg !== "perfect" && grade !== "miss" && dMs !== null ? (dMs < 0 ? "EARLY" : "LATE") : "", t: performance.now(), combo: st.combo, midi: target.midi, dMs };
       this.bursts.push({ t: performance.now(), grade, midi: target.midi });
     }
     if (st.combo && (st.combo === 10 || st.combo === 20 || st.combo === 30 || st.combo % 50 === 0)) this.milestone = { n: st.combo, t: performance.now() };
@@ -352,7 +357,7 @@ export class Practice {
   // the start of a note shown before the whole note is judged (otamatone: start and holding judged together)
   flashOnly(target, grade, d) {
     const sub = grade !== "perfect" && grade !== "miss" && d !== null ? (d < 0 ? "EARLY" : "LATE") : "";
-    this.flash = { grade, text: LABEL[grade], sub, t: performance.now(), combo: this.stats.combo };
+    this.flash = { grade, text: LABEL[grade], sub, t: performance.now(), combo: grade === "miss" ? 0 : this.stats.combo + 1, midi: target.midi, dMs: d === null ? null : d * 1000 };
     this.bursts.push({ t: performance.now(), grade, midi: target.midi });
   }
 
@@ -430,7 +435,13 @@ export class Practice {
     const acc = st.n ? Math.round((st.accSum / st.n) * 1000) / 10 : 0;
     const tacc = st.timeN ? Math.round((st.timeAccSum / st.timeN) * 1000) / 10 : 0;
     const hold = st.holdN ? Math.round((st.holdSum / st.holdN) * 1000) / 10 : 0;
-    this.ui.counts({ ...st, acc, tacc, hold });
+    this.ui.counts({ ...st, acc, tacc, hold, ...this.tendency() });
+  }
+
+  // where the playing tends to land: start time (ms, + late) and pitch (cent, + high), averaged over the notes
+  tendency() {
+    const st = this.stats;
+    return { davg: st.dN ? Math.round(st.dSum / st.dN) : null, dN: st.dN, cavg: st.centN ? Math.round(st.centSum / st.centN) : null };
   }
 
   result() {
@@ -444,6 +455,7 @@ export class Practice {
       fullCombo: st.n > 0 && st.miss === 0 && (this.mode !== "pro" || st.bad === 0),
       mode: this.mode,
       target: this.target,
+      ...this.tendency(),
       ...(this.pitchMode ? { judge: this.judgeKind, hold: st.holdN ? Math.round((st.holdSum / st.holdN) * 1000) / 10 : null } : {}),
     };
   }

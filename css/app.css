@@ -107,22 +107,23 @@ input[type="text"], input[type="number"] { background: var(--btn); border: 1px s
 .bar-hl.on { fill: var(--hl); }
 .cursor { stroke: var(--cursor); stroke-width: 2; }
 /* pitch rows (otamatone site, like SPRED) */
-.roll-black { fill: var(--panel); }
+.roll-row { fill: color-mix(in srgb, var(--grid) 38%, transparent); }
+.roll-black { fill: color-mix(in srgb, var(--grid) 85%, transparent); }
 .roll .bar-hl.on { opacity: .55; }
 .roll-c { stroke: var(--btn-b); stroke-width: 1; }
 .roll-beat { stroke: var(--grid); stroke-width: .7; }
 .roll-edge { stroke: var(--grid); stroke-width: 1; }
-.roll-name { font-size: 7.5px; fill: var(--ink2); font-family: system-ui, sans-serif; }
-.roll-name.c { font-weight: 700; fill: var(--ink); }
+.roll-name { font-size: 7px; font-weight: 700; fill: #fff; font-family: Arial, system-ui, sans-serif; }
 .roll-note { stroke: rgba(0, 0, 0, .25); stroke-width: .5; }
-.roll-note.t0 { fill: var(--t0); } .roll-note.t1 { fill: var(--t1); } .roll-note.t2 { fill: var(--t2); }
+.roll-note.t2 { stroke: var(--ink2); } /* SPRED's colours come with each note (pitchcolor.js) */
 .roll-note.off { opacity: .25; }
-.roll-label { font-size: 7px; font-weight: 700; fill: #fff; pointer-events: none; font-family: system-ui, sans-serif; }
+.roll-label { font-size: 7px; font-weight: 700; pointer-events: none; font-family: Arial, system-ui, sans-serif; }
 .roll-label.off { display: none; }
 /* parts of a melody-only site: what only chord instruments have is left out */
 .inst-otamatone .chord-only { display: none !important; }
 body:not(.inst-otamatone) .roll-only { display: none !important; }
-.g-lane.pitch { --row: 0px; height: 270px; } /* pitchlane.js sets the height from the song's range */
+.g-lane.pitch { --row: 0px; height: 270px; background: #525252; } /* pitchlane.js sets the height from the song's range */
+.inst-otamatone .g-lane-wrap .g-judge { display: none; } /* the lane writes the grade above the note */
 .g-lane.pitch canvas { display: block; width: 100%; height: 100%; }
 
 /* chord diagrams */

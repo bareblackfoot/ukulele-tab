@@ -8,6 +8,8 @@
 
 import { yin, rms } from "./dsp.js";
 
+const median = (a) => { const b = [...a].sort((x, y) => x - y), k = b.length >> 1; return b.length % 2 ? b[k] : (b[k - 1] + b[k]) / 2; };
+
 export const PITCH_TOL = { easy: 120, std: 80, pro: 50 }; // cents from the note that still count as on it
 export const JUDGE_KINDS = { both: "시작 박자 + 음 유지", start: "시작 박자만", hold: "음 유지만" };
 const ACC = { perfect: 1, ok: 2 / 3, bad: 1 / 3, miss: 0 };
@@ -31,11 +33,13 @@ export class PitchJudge {
 
   get kind() { return this.p.judgeKind; }
 
-  near(m, midi) {
-    let c = (m - midi) * 100;
-    if (this.p.mode === "easy") c = (((c % 1200) + 1800) % 1200) - 600; // any octave counts
-    return Math.abs(c) <= PITCH_TOL[this.p.mode];
+  // how far m is above the note (cent); in easy mode from the nearest octave of it
+  cents(m, midi) {
+    const c = (m - midi) * 100;
+    return this.p.mode === "easy" ? (((c % 1200) + 1800) % 1200) - 600 : c; // any octave counts
   }
+
+  near(m, midi) { return Math.abs(this.cents(m, midi)) <= PITCH_TOL[this.p.mode]; }
 
   // every animation frame: pitch of the new microphone sound, 50 frames a second
   update(an) {
@@ -85,6 +89,10 @@ export class PitchJudge {
       const len = g.tEnd - g.t;
       if (st >= g.t + Math.min(0.06, len * 0.2) && st <= g.tEnd - Math.min(0.08, len * 0.25)) {
         g.holdN = (g.holdN || 0) + 1;
+        // how high it was played: the middle of what was heard within a semitone of the note (a neighbour
+        // note reached early or left late does not pull it)
+        const c = m === null ? null : this.cents(m, g.midi);
+        if (c !== null && Math.abs(c) <= 100) (g.cs || (g.cs = [])).push(c);
         if (on) {
           g.holdOk = (g.holdOk || 0) + 1;
           const segs = g.segs || (g.segs = []);
@@ -119,7 +127,7 @@ export class PitchJudge {
       grade = a >= 0.9 ? "perfect" : a >= 0.65 ? "ok" : a >= 0.35 ? "bad" : "miss";
     }
     this.p.count(g, grade, g.headD == null ? null : g.headD * 1000, kind === "hold" ? null : h,
-      { flash: kind !== "both", hold: kind === "start" ? null : r });
+      { flash: kind !== "both", hold: kind === "start" ? null : r, cents: g.cs && g.cs.length >= 3 ? median(g.cs) : null });
   }
 
   // notes long past whose sound never came (the microphone stopped): finished as they are

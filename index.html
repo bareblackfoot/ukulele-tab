@@ -6,9 +6,9 @@
 <title>우쿨렐레 코드 악보</title>
 <meta name="description" content="유튜브에 맞춰 재생하는 우쿨렐레 코드·TAB 악보. 위쪽에 다음 코드 운지가 뜸.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3v13' stroke='%23a8743f' stroke-width='3'/%3E%3Ccircle cx='16' cy='22' r='8' fill='%23a8743f'/%3E%3Ccircle cx='16' cy='22' r='2.5' fill='%23fff'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/app.css?v=c44f0b3fc1">
+<link rel="stylesheet" href="css/app.css?v=dc24b0eca0">
 <!-- importmap -->
-<script type="importmap">{"imports":{"./js/audio.js":"./js/audio.js?v=c44f0b3fc1","./js/bridge.js":"./js/bridge.js?v=c44f0b3fc1","./js/chordbar.js":"./js/chordbar.js?v=c44f0b3fc1","./js/chords.js":"./js/chords.js?v=c44f0b3fc1","./js/dashboard.js":"./js/dashboard.js?v=c44f0b3fc1","./js/diagram.js":"./js/diagram.js?v=c44f0b3fc1","./js/drills.js":"./js/drills.js?v=c44f0b3fc1","./js/drillview.js":"./js/drillview.js?v=c44f0b3fc1","./js/dsp.js":"./js/dsp.js?v=c44f0b3fc1","./js/editor.js":"./js/editor.js?v=c44f0b3fc1","./js/fingering.js":"./js/fingering.js?v=c44f0b3fc1","./js/instrument.js":"./js/instrument.js?v=c44f0b3fc1","./js/lane.js":"./js/lane.js?v=c44f0b3fc1","./js/lyrics.js":"./js/lyrics.js?v=c44f0b3fc1","./js/main.js":"./js/main.js?v=c44f0b3fc1","./js/model.js":"./js/model.js?v=c44f0b3fc1","./js/pitchgame.js":"./js/pitchgame.js?v=c44f0b3fc1","./js/pitchlane.js":"./js/pitchlane.js?v=c44f0b3fc1","./js/practice.js":"./js/practice.js?v=c44f0b3fc1","./js/records.js":"./js/records.js?v=c44f0b3fc1","./js/sheet.js":"./js/sheet.js?v=c44f0b3fc1","./js/site.js":"./js/site.js?v=c44f0b3fc1","./js/strumfit.js":"./js/strumfit.js?v=c44f0b3fc1","./js/strumgame.js":"./js/strumgame.js?v=c44f0b3fc1","./js/strums.js":"./js/strums.js?v=c44f0b3fc1","./js/strumview.js":"./js/strumview.js?v=c44f0b3fc1","./js/youtube.js":"./js/youtube.js?v=c44f0b3fc1"}}</script>
+<script type="importmap">{"imports":{"./js/audio.js":"./js/audio.js?v=dc24b0eca0","./js/bridge.js":"./js/bridge.js?v=dc24b0eca0","./js/chordbar.js":"./js/chordbar.js?v=dc24b0eca0","./js/chords.js":"./js/chords.js?v=dc24b0eca0","./js/dashboard.js":"./js/dashboard.js?v=dc24b0eca0","./js/diagram.js":"./js/diagram.js?v=dc24b0eca0","./js/drills.js":"./js/drills.js?v=dc24b0eca0","./js/drillview.js":"./js/drillview.js?v=dc24b0eca0","./js/dsp.js":"./js/dsp.js?v=dc24b0eca0","./js/editor.js":"./js/editor.js?v=dc24b0eca0","./js/fingering.js":"./js/fingering.js?v=dc24b0eca0","./js/instrument.js":"./js/instrument.js?v=dc24b0eca0","./js/lane.js":"./js/lane.js?v=dc24b0eca0","./js/lyrics.js":"./js/lyrics.js?v=dc24b0eca0","./js/main.js":"./js/main.js?v=dc24b0eca0","./js/model.js":"./js/model.js?v=dc24b0eca0","./js/pitchcolor.js":"./js/pitchcolor.js?v=dc24b0eca0","./js/pitchgame.js":"./js/pitchgame.js?v=dc24b0eca0","./js/pitchlane.js":"./js/pitchlane.js?v=dc24b0eca0","./js/practice.js":"./js/practice.js?v=dc24b0eca0","./js/records.js":"./js/records.js?v=dc24b0eca0","./js/sheet.js":"./js/sheet.js?v=dc24b0eca0","./js/site.js":"./js/site.js?v=dc24b0eca0","./js/strumfit.js":"./js/strumfit.js?v=dc24b0eca0","./js/strumgame.js":"./js/strumgame.js?v=dc24b0eca0","./js/strums.js":"./js/strums.js?v=dc24b0eca0","./js/strumview.js":"./js/strumview.js?v=dc24b0eca0","./js/youtube.js":"./js/youtube.js?v=dc24b0eca0"}}</script>
 <!-- /importmap -->
 </head>
 <body>
@@ -122,6 +122,7 @@
       <span class="bad">Bad <b data-c="bad">0</b></span><span class="miss">Miss <b data-c="miss">0</b></span>
       <span>콤보 <b data-c="combo">0</b></span><span>점수 <b data-c="score">0</b></span>
       <span>정확도 <b data-c="acc">0%</b></span><span>타이밍 <b data-c="tacc">0%</b></span><span class="roll-only">음 유지 <b data-c="hold">0%</b></span>
+      <span title="음을 시작한 시각이 판정 박보다 평균 얼마나 늦었는지(+) 빨랐는지(-)">시작 박자 평균 <b data-c="davg">--</b></span><span class="roll-only" title="낸 음높이가 악보 음보다 평균 얼마나 높았는지(+) 낮았는지(-). 1 cent = 반음의 100분의 1">음높이 평균 <b data-c="cavg">--</b></span>
     </div>
     <p class="g-notice">스피커 소리가 마이크로 들어가면 판정이 흔들림. 이어폰 권장.</p>
   </section>
@@ -255,7 +256,7 @@
     <h2>게임 결과</h2>
     <div class="gr-meta"></div>
     <div class="gr-grid"></div>
-    <div class="row end gr-btns"><button type="button" data-act="gr-retry">다시 하기</button><button value="close">닫기</button></div>
+    <div class="row end gr-btns"><button type="button" data-act="gr-sync" hidden></button><button type="button" data-act="gr-retry">다시 하기</button><button value="close">닫기</button></div>
   </form>
 </dialog>
 
@@ -316,6 +317,6 @@
   </form>
 </dialog>
 
-<script type="module" src="js/main.js?v=c44f0b3fc1"></script>
+<script type="module" src="js/main.js?v=dc24b0eca0"></script>
 </body>
 </html>

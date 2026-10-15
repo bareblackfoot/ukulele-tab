@@ -83,7 +83,8 @@ const practice = new Practice(engine, player, {
   counts: (st) => {
     for (const el of $$(".g-counts [data-c]")) {
       const k = el.dataset.c;
-      el.textContent = k === "acc" || k === "tacc" || k === "hold" ? `${st[k]}%` : String(st[k]);
+      el.textContent = k === "acc" || k === "tacc" || k === "hold" ? `${st[k]}%` : k === "davg" ? lateText(st.davg)
+        : k === "cavg" ? highText(st.cavg) : String(st[k]);
     }
   },
   heard: (txt) => { $(".g-heard").textContent = txt; },
@@ -219,7 +220,7 @@ function setScore(s, { keepHistory = false, msg } = {}) {
   if (!$(".yt").hidden && score.youtube.videoId) yt.load(score.youtube.videoId);
   document.title = (score.meta.title ? score.meta.title + " · " : "") + INST.title;
   updatePosition(player.position());
-  if (msg) status(msg);
+  if (msg !== undefined) status(msg); // an empty one clears what the last sheet said
   autosave();
 }
 
@@ -490,6 +491,7 @@ const actions = {
   practice: () => togglePractice(),
   "g-rules": () => $(".dlg-grules").showModal(),
   "g-sync": () => openSync(),
+  "gr-sync": (b) => { setSync(+b.dataset.v); b.hidden = true; status(`게임 싱크 ${$(".g-sync-val").textContent}`); },
   "gr-retry": () => { $(".dlg-gresult").close(); retry(); },
   new: () => {
     if (!confirm("지금 악보를 닫고 새 악보를 만들까? (저장 안 한 내용은 브라우저에 남은 마지막 판만 있음)")) return;
@@ -552,7 +554,7 @@ document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-act]");
   if (!b || !actions[b.dataset.act]) return;
   $$(".menu").forEach((x) => x.classList.remove("open"));
-  actions[b.dataset.act]();
+  actions[b.dataset.act](b);
 });
 
 function setEditing(on) { setView(on ? "edit" : "sheet"); }
@@ -688,6 +690,11 @@ $(".dlg-gsync [data-act=gs-auto]").addEventListener("click", async () => {
   }
 });
 
+// where the playing lands on average: "+45 ms 늦음", "-18 cent 낮음"
+const signed = (v) => `${v > 0 ? "+" : ""}${v}`;
+function lateText(v, unit = " ms") { return v === null || v === undefined ? "--" : `${signed(v)}${unit} ${Math.abs(v) < 10 ? "맞음" : v > 0 ? "늦음" : "빠름"}`; }
+function highText(v, unit = " cent") { return v === null || v === undefined ? "--" : `${signed(v)}${unit} ${Math.abs(v) < 10 ? "맞음" : v > 0 ? "높음" : "낮음"}`; }
+
 function showResult() {
   const r = practice.result();
   if (!r.n) return;
@@ -712,7 +719,14 @@ function showResult() {
     r.hold === null || r.hold === undefined ? "" : cell("음 유지", `${r.hold}%`), cell("점수", r.score), cell("최대 콤보", r.maxCombo),
     cell("Perfect", r.perfect, "perfect"), cell("Ok", r.ok, "ok"), cell("Bad", r.bad, "bad"), cell("Miss", r.miss, "miss"),
     cell("빠름 (EARLY)", r.early), cell("늦음 (LATE)", r.late), cell("판정한 수", `${r.n}/${r.total}`),
+    r.davg === null ? "" : cell("시작 박자 평균 (ms)", lateText(r.davg, "")), r.cavg === null || r.cavg === undefined ? "" : cell("음높이 평균 (cent)", highText(r.cavg, "")),
   ].join("");
+  // starts that came late (or early) all along mean the sync is off rather than the playing: offer to move it
+  const fix = dlg.querySelector("[data-act=gr-sync]");
+  const move = r.dN >= 8 && Math.abs(r.davg) >= 15 ? r.davg : 0;
+  fix.hidden = !move;
+  fix.dataset.v = String(practice.offsetMs + move);
+  fix.textContent = `싱크를 ${signed(practice.offsetMs + move)} ms로 (평균 ${signed(move)} ms 반영)`;
   dlg.showModal();
 }
 

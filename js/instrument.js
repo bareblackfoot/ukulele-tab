@@ -24,6 +24,8 @@ export const TUNINGS = {
 //   roll: melody only, shown as pitch rows like SPRED (no chords to play, no TAB); chordTuning: the chords a
 //   sheet may still have are played as backing on this tuning's shapes
 //   url: the site's address next to the other sites
+//   stem: how far apart the notes are on the instrument, as SPRED draws it (rows of `row` px, gaps[m] px more
+//   between note m and m + 1); a sheet from SPRED brings its own (score.stem)
 export const INSTRUMENTS = {
   ukulele: {
     id: "ukulele", name: "우쿨렐레", title: "우쿨렐레 코드 악보", prefix: "uketab", defaultTuning: "standard", url: "../ukulele-tab/",
@@ -61,6 +63,11 @@ export const INSTRUMENTS = {
     id: "otamatone", name: "오타마톤", title: "오타마톤 악보", prefix: "otatab", defaultTuning: "otamatone", url: "../otamatone-tab/",
     fileExt: ".ota.json", melodyCenter: 67, maxFret: 33, strumGap: 0.012, nylon: true, roll: true, chordTuning: "standard",
     common: [], progressions: [],
+    // the layout of the SPRED maker's sheets (all 36 the same): the finger moves 49-61 px a semitone low on the
+    // stem and 9-15 px near the top, so the sheet shows the real distance between two notes
+    stem: { row: 7, gaps: { 52: 42, 53: 54, 54: 54, 55: 42, 56: 42, 57: 42, 58: 34, 59: 28, 60: 32, 61: 30, 62: 30, 63: 24,
+      64: 22, 65: 22, 66: 20, 67: 18, 68: 14, 69: 14, 70: 14, 71: 12, 72: 14, 73: 14, 74: 10, 75: 6, 76: 8, 77: 6, 78: 8,
+      79: 8, 80: 4, 81: 6, 82: 8, 83: 2, 84: 6 } },
   },
 };
 
@@ -73,3 +80,18 @@ export const tuningsOf = (instId) => Object.values(TUNINGS).filter((t) => t.inst
 
 // localStorage key of this site (the login session and the bridge connection are shared by all sites)
 export const skey = (k) => `${INST.prefix}.${k}`;
+
+// where a pitch sits on the stem: SPRED px above E3, a fractional pitch (a heard one) between its two notes;
+// outside the stem the nearest step goes on. Without a stem every semitone is one step of 10.
+export function stemMap(stem) {
+  if (!stem) return (m) => (m - 52) * 10;
+  const lo = 52, hi = 85, step = (m) => stem.row + (Number(stem.gaps[m]) || 0), p = [0];
+  for (let m = lo; m < hi; m++) p.push(p[p.length - 1] + step(m));
+  return (m) => {
+    if (m <= lo) return (m - lo) * step(lo);
+    if (m >= hi) return p[hi - lo] + (m - hi) * step(hi - 1);
+    const i = Math.floor(m) - lo;
+    return p[i] + (m - Math.floor(m)) * (p[i + 1] - p[i]);
+  };
+}
+export const stemOf = (score) => (score && score.stem) || INST.stem || null;

@@ -1,12 +1,21 @@
-// Otamatone game lane: one row per semitone (higher notes higher), each note a bar on its row coming from the
-// right to the hit line, a beat always the same width. The pitch the microphone hears is drawn as a line that
-// leaves the hit line to the left, so being on a note shows as the line running along its bar; the parts of a
-// note held on pitch turn green. Bottom left: the note heard now and how far off it is (cents).
+// Otamatone game lane, drawn like SPRED's practice mode: dark rows, one per semitone (higher notes higher),
+// placed as far apart as the notes are on the stem (SPRED's spacing), notes in SPRED's colours coming from the
+// right to the hit line, a beat always the same width. The pitch the microphone hears is a glowing green dot
+// on the hit line, with the note there and how many cents off it is, and a line leaving to the left. The parts
+// of a passed note held on pitch stay bright, the rest dims. A judged note gets its grade above it (with the
+// combo, early/late and by how much) and a burst of sparks.
 
-import { computeBars, pitchName } from "./model.js";
+import { computeBars, pitchName, midiOf } from "./model.js";
+import { stemMap, stemOf } from "./instrument.js";
+import { noteFill, noteText, rowFill, trackKind } from "./pitchcolor.js";
+import { PITCH_TOL } from "./pitchgame.js";
 
-const BLACK = new Set([1, 3, 6, 8, 10]);
-const GRADE = { perfect: "#2f9e44", ok: "#1c7ed6", bad: "#f08c00", miss: "#e03131" };
+const NATURAL = new Set([0, 2, 4, 5, 7, 9, 11]);
+// SPRED's roll and judge colours
+const BG = "#525252", ROW = "#646464", ROW_SHARP = "#5b5b5b", DOT = "#39ff79", HIT = "#ff5050";
+const JUDGE = { perfect: "#62ff8b", ok: "#6fc7ff", bad: "#ffba5f", miss: "#ff6f6f" };
+const LABEL = { perfect: "Perfect", ok: "Ok", bad: "Bad", miss: "Miss" };
+const FLASH_MS = 520;
 
 export class PitchLane {
   constructor(root) {
@@ -14,6 +23,9 @@ export class PitchLane {
     root.classList.add("pitch");
     this.cv = document.createElement("canvas");
     root.appendChild(this.cv);
+    this.sparks = [];
+    this.seenBurst = 0;
+    this.lastNow = 0;
   }
 
   draw(practice, nowCol) {
@@ -24,143 +36,243 @@ export class PitchLane {
     if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     const c = cv.getContext("2d");
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const css = getComputedStyle(document.documentElement);
-    const v = (n) => css.getPropertyValue(n).trim();
     const ts = practice.targets, tm = practice.player.tm, spb = s.stepsPerBeat;
     if (this.ref !== ts || this.score !== s) {
       this.ref = ts;
       this.score = s;
       const ms = ts.map((t) => t.midi);
-      this.lo = (ms.length ? Math.min(...ms) : 60) - 2;
-      this.hi = (ms.length ? Math.max(...ms) : 72) + 2;
-      while (this.hi - this.lo < 12) { this.hi++; if (this.hi - this.lo < 12) this.lo--; }
+      this.lo = (ms.length ? Math.min(...ms) : 60) - 1;
+      this.hi = (ms.length ? Math.max(...ms) : 72) + 1;
+      while (this.hi - this.lo < 8) { this.hi++; if (this.hi - this.lo < 8) this.lo--; }
+      this.pos = stemMap(stemOf(s));
       this.bars = computeBars(s);
-      // about 10 px a row, so a wide song gets a taller lane (within what fits next to the sheet)
-      const rows = this.hi - this.lo + 1, small = window.innerWidth < 560;
-      this.root.style.height = `${Math.round(Math.max(small ? 170 : 200, Math.min(small ? 260 : 340, rows * 10 + 8)))}px`;
+      // the tracks switched off in 보기: drawn faint, not judged
+      this.off = s.tracks.flatMap((t, ti) => (t.muted && !t.hidden ? t.notes.map((n) => ({ col: n.col, len: n.len, midi: midiOf(n, s.tuning, s.capo || 0), tk: trackKind(t, ti) })) : []))
+        .sort((a, b) => a.col - b.col);
+      // as tall as the song's notes are apart on the stem (0.55 screen px for SPRED's 1, 0.42 on a phone); a song
+      // spread wider than what fits next to the sheet is drawn smaller
+      const small = window.innerWidth < 560, span = this.pos(this.hi) - this.pos(this.lo);
+      const maxH = small ? 280 : Math.max(300, Math.min(440, window.innerHeight * 0.5));
+      this.root.style.height = `${Math.round(Math.max(small ? 150 : 170, Math.min(maxH, span * (small ? 0.42 : 0.55) + 24)))}px`;
     }
     const narrow = W < 560;
     const hitX = narrow ? 64 : 84;
     this.root.parentElement.style.setProperty("--hit", `${hitX}px`);
     const ppc = Math.max(70, Math.min(110, W / 9)) / spb;
     const X = (col) => hitX + (col - nowCol) * ppc;
-    const lo = this.lo, hi = this.hi, top = 4, rowH = (H - 8) / (hi - lo + 1);
-    const Y = (m) => top + (hi - m + 0.5) * rowH;
+    const lo = this.lo, hi = this.hi, pos = this.pos, bh = 10, top = bh / 2 + 6;
+    const Y = (m) => top + ((pos(hi) - pos(m)) / (pos(hi) - pos(lo))) * (H - 2 * top);
+    const clamp = (m) => Math.max(lo - 0.4, Math.min(hi + 0.4, m));
     const colLo = nowCol - hitX / ppc - 1, colHi = nowCol + (W - hitX) / ppc + 1;
+    const now = performance.now(), dt = Math.min(0.05, (now - (this.lastNow || now)) / 1000);
+    this.lastNow = now;
 
-    c.fillStyle = v("--paper");
+    c.fillStyle = BG;
     c.fillRect(0, 0, W, H);
-    // rows
+    // rows: a band per note, narrower where the notes sit close on the stem
+    const rows = [];
     for (let m = lo; m <= hi; m++) {
-      const pc = ((m % 12) + 12) % 12, y = Y(m) - rowH / 2;
-      if (BLACK.has(pc)) { c.fillStyle = v("--panel"); c.fillRect(0, y, W, rowH); }
-      if (pc === 0) { c.strokeStyle = v("--btn-b"); c.lineWidth = 1; c.beginPath(); c.moveTo(0, y + rowH); c.lineTo(W, y + rowH); c.stroke(); }
+      const pc = ((m % 12) + 12) % 12, y = Y(m);
+      const h = Math.max(1, Math.min(bh, (m < hi ? y - Y(m + 1) : bh + 2) - 1.5, (m > lo ? Y(m - 1) - y : bh + 2) - 1.5));
+      c.fillStyle = NATURAL.has(pc) ? ROW : ROW_SHARP;
+      c.fillRect(0, y - h / 2, W, h);
+      rows.push({ m, y, h, rank: pc === 0 ? 0 : NATURAL.has(pc) ? 1 : 2 });
     }
     // beats and bars
-    c.lineWidth = 1;
     for (const b of this.bars) {
       if (b.start > colHi) break;
       if (b.start + b.len < colLo) continue;
       for (let k = 0; k < b.len; k += spb) {
         const x = X(b.start + k);
         if (x < -2 || x > W + 2) continue;
-        c.strokeStyle = k === 0 ? v("--btn-b") : v("--grid");
+        c.strokeStyle = k === 0 ? "rgba(255,255,255,.55)" : "rgba(255,255,255,.2)";
         c.lineWidth = k === 0 ? 2 : 1;
         c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke();
       }
     }
-    // row names at the left edge
-    c.font = `${Math.min(11, Math.max(8, rowH * 0.8))}px system-ui, sans-serif`;
+    // notes of the tracks switched off
+    c.globalAlpha = 0.22;
+    for (const g of this.off) {
+      if (g.col > colHi) break;
+      if (g.col + g.len < colLo || g.midi < lo - 1 || g.midi > hi + 1) continue;
+      c.fillStyle = noteFill(g.midi, g.tk);
+      c.fillRect(X(g.col), Y(g.midi) - bh / 2, Math.max(3, g.len * ppc - 1.5), bh);
+    }
+    c.globalAlpha = 1;
+    // the notes to play: bright until they reach the hit line; past it only the parts held on pitch stay bright
     c.textBaseline = "middle";
     c.textAlign = "left";
-    for (let m = lo; m <= hi; m++) {
-      if (rowH < 9 && m % 12 !== 0) continue;
-      c.fillStyle = m % 12 === 0 ? v("--ink") : v("--ink2");
-      c.fillText(pitchName(m), 3, Y(m));
-    }
-    // notes
-    const bh = Math.max(7, rowH * 0.88);
-    c.textAlign = "left";
+    let atHit = null;
     for (const g of ts) {
       if (g.col > colHi) break;
       if (g.col + (g.len || 1) < colLo) continue;
-      const x0 = X(g.col), x1 = X(g.col + (g.len || 1)) - 1.5, y = Y(g.midi);
-      const done = g.grade && g.grade !== "pending";
-      c.globalAlpha = done ? 0.55 : 1;
-      c.fillStyle = done ? GRADE[g.grade] : g.head ? GRADE[g.head] : v("--ink");
-      roundRect(c, x0, y - bh / 2, Math.max(4, x1 - x0), bh, Math.min(4, bh / 2));
-      c.fill();
-      c.globalAlpha = 1;
-      // the parts held on pitch
-      if (g.segs) {
-        c.fillStyle = "rgba(47, 158, 68, .95)";
-        for (const [a, b] of g.segs) {
-          const xa = X(tm.timeToCol(a)), xb = X(tm.timeToCol(b + 0.02));
-          c.fillRect(xa, y - bh / 2 + 1.5, Math.max(1.5, xb - xa), bh - 3);
-        }
+      const x0 = X(g.col), x1 = X(g.col + (g.len || 1)) - 1.5, y = Y(g.midi), w = Math.max(4, x1 - x0);
+      const fill = noteFill(g.midi, g.tk || 0);
+      if (x0 <= hitX && x1 >= hitX) atHit = g;
+      const bar = () => { c.beginPath(); c.rect(x0, y - bh / 2, w, bh); };
+      if (x0 < hitX) {
+        c.globalAlpha = 0.32;
+        c.fillStyle = fill;
+        bar(); c.fill();
+        c.globalAlpha = 1;
+        c.save();
+        c.beginPath(); c.rect(hitX, 0, W, H); c.clip();
+        c.fillStyle = fill; bar(); c.fill();
+        c.restore();
+      } else {
+        c.fillStyle = fill; bar(); c.fill();
       }
-      if (x1 - x0 > 26 && bh >= 8) {
-        c.fillStyle = v("--paper");
-        c.font = `bold ${Math.max(7.5, Math.min(11, bh - 0.5))}px system-ui, sans-serif`;
-        c.fillText(pitchName(g.midi), x0 + 4, y + 0.5);
+      c.strokeStyle = g.tk === 2 ? "rgba(255,255,255,.92)" : "rgba(255,255,255,.22)";
+      c.lineWidth = 1;
+      bar(); c.stroke();
+      if (g.segs) {
+        c.save();
+        c.shadowColor = fill;
+        c.shadowBlur = 10;
+        c.fillStyle = fill;
+        for (const [a, b] of g.segs) {
+          const xa = Math.max(x0, X(tm.timeToCol(a))), xb = Math.min(x1, X(tm.timeToCol(b + 0.02)));
+          if (xb > xa) c.fillRect(xa, y - bh / 2, Math.max(1.5, xb - xa), bh);
+        }
+        c.restore();
+      }
+      if (x1 - x0 > 26) {
+        c.fillStyle = noteText(g.tk || 0);
+        c.font = "bold 9.5px Arial, system-ui, sans-serif";
+        c.fillText(pitchName(g.midi), x0 + 3, y + 0.5);
       }
     }
     // hit line
-    c.strokeStyle = v("--cursor");
+    c.save();
+    c.shadowColor = HIT;
+    c.shadowBlur = 8;
+    c.strokeStyle = HIT;
     c.lineWidth = 3;
     c.beginPath(); c.moveTo(hitX, 0); c.lineTo(hitX, H); c.stroke();
-    // the pitch heard: a line to the left of the hit line, a dot at it
+    c.restore();
+    // row names at the left edge on SPRED's dark shade of each note's colour, the name where it fits (C first)
+    c.font = "bold 9.5px Arial, system-ui, sans-serif";
+    c.textAlign = "center";
+    const shown = [];
+    for (const r of rows) { c.fillStyle = rowFill(r.m); c.fillRect(0, r.y - r.h / 2, 30, r.h); }
+    for (const r of rows.sort((a, b) => a.rank - b.rank)) {
+      if (shown.some((y) => Math.abs(y - r.y) < 11)) continue;
+      shown.push(r.y);
+      c.fillStyle = rowFill(r.m);
+      c.fillRect(0, r.y - 5.5, 30, 11);
+      c.fillStyle = "#fff";
+      c.fillText(pitchName(r.m), 15, r.y + 0.5);
+    }
+    // the pitch heard: a green line to the left of the hit line, a glowing dot on it
     const pj = practice.pj;
     if (pj) {
-      const clamp = (m) => Math.max(lo - 0.4, Math.min(hi + 0.4, m));
-      c.strokeStyle = v("--cursor");
+      c.save();
+      c.strokeStyle = DOT;
+      c.globalAlpha = 0.85;
       c.lineWidth = 2.5;
       c.lineJoin = "round";
+      c.shadowColor = DOT;
+      c.shadowBlur = 6;
       let open = false, lastX = -1e9;
       c.beginPath();
       for (const f of pj.trail) {
         const x = X(tm.timeToCol(f.st));
-        if (x < -4 || f.m === null || x - lastX > 12) { if (open) c.stroke(); open = false; c.beginPath(); }
-        if (x < -4 || f.m === null) { lastX = -1e9; continue; }
+        if (x < 30 || f.m === null || x - lastX > 12) { if (open) c.stroke(); open = false; c.beginPath(); }
+        if (x < 30 || f.m === null) { lastX = -1e9; continue; }
         const y = Y(clamp(f.m));
         if (!open) { c.moveTo(x, y); open = true; } else c.lineTo(x, y);
         lastX = x;
       }
       if (open) c.stroke();
+      c.restore();
       const L = pj.live;
-      if (L && L.m !== null && performance.now() - L.at < 200) {
-        c.fillStyle = v("--cursor");
-        c.beginPath(); c.arc(hitX, Y(clamp(L.m)), 6, 0, Math.PI * 2); c.fill();
-        const r = Math.round(L.m), cents = Math.round((L.m - r) * 100);
-        const txt = `${pitchName(r)} ${cents >= 0 ? "+" : ""}${cents}`;
-        c.font = "bold 13px system-ui, sans-serif";
-        c.textBaseline = "bottom";
-        c.fillStyle = v("--paper");
-        c.fillRect(0, H - 20, c.measureText(txt).width + 10, 20);
-        c.fillStyle = v("--ink");
-        c.fillText(txt, 4, H - 3);
+      if (L && L.m !== null && now - L.at < 200) {
+        const y = Y(clamp(L.m));
+        c.save();
+        c.shadowColor = DOT;
+        c.shadowBlur = 14;
+        c.fillStyle = DOT;
+        c.beginPath(); c.arc(hitX, y, 7, 0, Math.PI * 2); c.fill();
+        c.shadowBlur = 0;
+        c.strokeStyle = "#fff";
+        c.lineWidth = 2;
+        c.stroke();
+        c.restore();
+        // against the note at the hit line when it is within a semitone and a half, else the nearest note
+        let name = pitchName(Math.round(L.m)), cents = Math.round((L.m - Math.round(L.m)) * 100), on = null;
+        const d = atHit ? pj.cents(L.m, atHit.midi) : 1e9;
+        if (Math.abs(d) <= 150) { name = pitchName(atHit.midi); cents = Math.round(d); on = Math.abs(d) <= PITCH_TOL[practice.mode]; }
+        const txt = `${name} ${cents > 0 ? "+" : ""}${cents}`;
+        c.font = "bold 13px Arial, system-ui, sans-serif";
+        c.textAlign = "right";
+        c.textBaseline = "middle";
+        // above the dot (below it near the top), so the line it leaves stays in sight
+        const tw = c.measureText(txt).width, ty = y - 17 >= 9 ? y - 17 : Math.min(H - 9, y + 17);
+        c.fillStyle = "rgba(0,0,0,.65)";
+        c.fillRect(hitX - 12 - tw - 6, ty - 9, tw + 10, 18);
+        c.fillStyle = on === null ? "#fff" : on ? DOT : JUDGE.bad;
+        c.fillText(txt, hitX - 13, ty + 0.5);
       }
     }
-    // a ring where a note was judged
-    const now = performance.now();
+    // a ring and sparks where a note was judged
     practice.bursts = practice.bursts.filter((b) => now - b.t < 400);
     for (const b of practice.bursts) {
+      const y = b.midi !== undefined ? Y(clamp(b.midi)) : H / 2;
+      if (b.t > this.seenBurst) {
+        this.seenBurst = b.t;
+        const n = b.grade === "perfect" ? 16 : b.grade === "miss" ? 0 : 9;
+        for (let i = 0; i < n; i++) {
+          const a = Math.random() * Math.PI * 2, v = 70 + Math.random() * 150;
+          this.sparks.push({ x: hitX, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 40, life: 1, color: JUDGE[b.grade] });
+        }
+      }
       const k = (now - b.t) / 400;
+      c.save();
       c.globalAlpha = 1 - k;
-      c.strokeStyle = GRADE[b.grade];
+      c.strokeStyle = JUDGE[b.grade];
+      c.shadowColor = JUDGE[b.grade];
+      c.shadowBlur = 10;
       c.lineWidth = b.grade === "perfect" ? 4 : 2;
-      c.beginPath(); c.arc(hitX, b.midi !== undefined ? Y(b.midi) : H / 2, 8 + k * 22, 0, Math.PI * 2); c.stroke();
+      c.beginPath(); c.arc(hitX, y, 9 + k * 24, 0, Math.PI * 2); c.stroke();
+      c.restore();
     }
-    c.globalAlpha = 1;
+    c.save();
+    c.globalCompositeOperation = "lighter";
+    this.sparks = this.sparks.filter((p) => (p.life -= dt / 0.5) > 0);
+    for (const p of this.sparks) {
+      p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 260 * dt;
+      c.globalAlpha = p.life;
+      c.fillStyle = p.color;
+      c.beginPath(); c.arc(p.x, p.y, 1.2 + 1.8 * p.life, 0, Math.PI * 2); c.fill();
+    }
+    c.restore();
+    // the grade above the note just judged: combo, grade, early/late and by how much
+    const f = practice.flash;
+    const age = f ? now - f.t : 1e9;
+    if (f && age < FLASH_MS && f.midi !== undefined) {
+      const lines = [];
+      if (f.combo > 1 && f.grade !== "miss") lines.push({ t: `COMBO ${f.combo}`, size: 13, color: "#fff" });
+      lines.push({ t: LABEL[f.grade], size: 21, color: JUDGE[f.grade] });
+      if (f.sub) lines.push({ t: `${f.sub.toLowerCase()}${f.dMs !== null && f.dMs !== undefined ? ` ${Math.abs(Math.round(f.dMs))}ms` : ""}`, size: 12, color: f.sub === "EARLY" ? JUDGE.ok : JUDGE.miss });
+      const scale = age < 110 ? 1.35 - 0.35 * (age / 110) : 1;
+      const alpha = age > FLASH_MS - 150 ? (FLASH_MS - age) / 150 : 1;
+      const total = lines.reduce((a, l) => a + l.size + 2, 0);
+      let yy = Math.max(4, Y(clamp(f.midi)) - bh / 2 - 8 - total - age * 0.02);
+      c.save();
+      c.globalAlpha = alpha;
+      c.textAlign = "center";
+      c.textBaseline = "top";
+      c.lineJoin = "round";
+      for (const l of lines) {
+        c.font = `900 ${Math.round(l.size * scale)}px Arial, system-ui, sans-serif`;
+        c.lineWidth = 3.5;
+        c.strokeStyle = "rgba(0,0,0,.9)";
+        c.strokeText(l.t, hitX + 50, yy);
+        c.fillStyle = l.color;
+        c.fillText(l.t, hitX + 50, yy);
+        yy += l.size + 2;
+      }
+      c.restore();
+    }
   }
-}
-
-function roundRect(c, x, y, w, h, r) {
-  c.beginPath();
-  c.moveTo(x + r, y);
-  c.arcTo(x + w, y, x + w, y + h, r);
-  c.arcTo(x + w, y + h, x, y + h, r);
-  c.arcTo(x, y + h, x, y, r);
-  c.arcTo(x, y, x + w, y, r);
-  c.closePath();
 }

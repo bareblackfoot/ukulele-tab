@@ -74,6 +74,8 @@ export function normalizeScore(o) {
   s.strums = cleanStrums(o.strums);
   if (Array.isArray(o.strumProfile)) s.strumProfile = cleanProfile(o.strumProfile);
   if (o.strumProfileKind) s.strumProfileKind = o.strumProfileKind === "ukulele" ? "ukulele" : "band";
+  const stem = cleanStem(o.stem);
+  if (stem) s.stem = stem;
   s.chords = ev(o.chords, "name");
   s.lyrics = ev(o.lyrics, "text");
   s.tracks = (o.tracks && o.tracks.length ? o.tracks : s.tracks).map((t, i) => ({
@@ -93,6 +95,7 @@ export function normalizeScore(o) {
     ...s.tracks.flatMap((t) => t.notes.map((n) => n.col + n.len)));
   s.columnCount = Math.max(int(o.columnCount, 0), lastCol, s.stepsPerBeat * 4);
   sortScore(s);
+  s.tempo = s.tempo.filter((t, i, a) => i === 0 || t.bpm !== a[i - 1].bpm); // SPRED repeats the same BPM along the line
   return s;
 }
 
@@ -160,6 +163,14 @@ export const cleanPattern = (p) => String(p || "").toUpperCase().replace(/[^DUX-
 
 function cleanStrums(arr) {
   return (arr || []).map((e) => ({ col: Math.max(0, int(e && e.col)), pattern: cleanPattern(e && e.pattern) })).filter((e) => e.pattern);
+}
+
+// note spacing on the otamatone stem, as a SPRED sheet lays out its rows (instrument.js stem)
+function cleanStem(o) {
+  if (!o || typeof o !== "object" || !o.gaps || typeof o.gaps !== "object") return null;
+  const gaps = {};
+  for (const [m, h] of Object.entries(o.gaps)) if (int(m, -1) >= 0 && int(m, -1) <= 127) gaps[int(m)] = Math.max(0, Math.min(500, int(h)));
+  return { row: Math.max(1, Math.min(500, int(o.row, 7))), gaps };
 }
 
 // per bar, how strongly the recording's accompaniment starts a sound on each 8th (0..1); used to suggest patterns
@@ -298,6 +309,14 @@ export function fromSpred(o, opts = {}) {
   const spb = spbCells.length ? spbCells[0].v : 4;
   const melody = (o.tracks || []).map((t) => ({ id: t.trackId || t.id, name: SPRED_TRACK[t.trackName] || t.trackName || t.trackId, ...spredNotes(t) }))
     .filter((t) => t.notes.length);
+  // the sheet's row layout: how far apart its notes are on the stem (only gaps between two note rows count)
+  const rows = ((o.layout && o.layout.rowDefinitions) || []).filter((r) => r && (r.stringId || "s1") === "s1");
+  const noteRows = new Map(rows.filter((r) => r.type === "note").map((r) => [r.midi, r]));
+  let stem;
+  if (noteRows.size > 1) {
+    stem = { row: noteRows.values().next().value.height, gaps: {} };
+    for (const r of rows) if (r.type === "gap" && r.toMidi === r.fromMidi + 1 && noteRows.has(r.fromMidi) && noteRows.has(r.toMidi)) stem.gaps[r.fromMidi] = r.height;
+  }
   return fromPitchData({
     meta: { title: (md.musicTitle || "").trim(), artist: md.musicArtist || "", comment: md.comment || "",
       source: "SPRED 악보에서 가져옴" + (md.scoreWriter ? ` (원 악보: ${md.scoreWriter})` : "") },
@@ -307,7 +326,7 @@ export function fromSpred(o, opts = {}) {
     meter: g("global-bpb").map((c) => ({ col: c.col, beats: c.v })),
     youtube: md.youtube || {},
     chords: [], lyrics: [], sections: [],
-    melody,
+    melody, stem,
   }, opts);
 }
 
@@ -331,6 +350,7 @@ function fromPitchData(d, opts) {
   s.strums = cleanStrums(d.strums);
   if (Array.isArray(d.strumProfile)) s.strumProfile = cleanProfile(d.strumProfile);
   if (d.strumProfileKind) s.strumProfileKind = d.strumProfileKind === "ukulele" ? "ukulele" : "band";
+  if (d.stem) s.stem = d.stem;
   const report = [];
   s.tracks = (d.melody || []).map((t, i) => {
     const capo = Math.max(0, Math.min(12, int(d.capo ?? opts.capo, 0)));

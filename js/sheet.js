@@ -1,11 +1,12 @@
 // Chord sheet view: bars in lines (4 per line on wide screens), chord names with small diagrams above
 // the line, lyrics below, optional melody tab. Highlights the bar being played.
 // A melody-only instrument (the otamatone) gets pitch rows instead, like SPRED: time across, one row per
-// semitone (higher notes higher), each note a bar on its row.
+// semitone (higher notes higher) placed as far apart as the notes are on the stem, each note a bar on its row.
 
 import { computeBars, distinctChords, barAt, tabLabel, midiOf, pitchName } from "./model.js";
 import { diagramSVG } from "./diagram.js";
-import { INST, tuningOf } from "./instrument.js";
+import { INST, tuningOf, stemMap, stemOf } from "./instrument.js";
+import { noteFill, noteText, rowFill, trackKind } from "./pitchcolor.js";
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const STRUM_ARROW = { D: "↓", U: "↑", "-": "·", x: "×", X: "×" };
@@ -209,10 +210,11 @@ export class SheetView {
     if (bars.length > 1 && bars[0].len < mainLen) i0 = 1; // pickup bar goes in front of the first line
     for (let i = i0; i < bars.length; i += perLine) lines.push(bars.slice(i === i0 && i0 ? 0 : i, i + perLine));
     if (!lines.length) lines.push(bars);
-    const left = 34, right = 8, rowH = W >= 540 ? 10 : 9, top = 18;
+    // a note's height is its place on the stem (SPRED's spacing), k screen px for SPRED's 1
+    const left = 34, right = 8, k = W >= 540 ? 0.45 : 0.36, bh = 8, top = 18, pos = stemMap(stemOf(score));
     const spb = score.stepsPerBeat;
     const tracks = score.tracks.map((t, ti) => ({ t, ti })).filter(({ t }) => !t.hidden);
-    const notes = tracks.flatMap(({ t, ti }) => t.notes.map((n) => ({ col: n.col, len: n.len, m: midiOf(n, score.tuning, score.capo || 0), ti, off: !!t.muted })));
+    const notes = tracks.flatMap(({ t, ti }) => t.notes.map((n) => ({ col: n.col, len: n.len, m: midiOf(n, score.tuning, score.capo || 0), tk: trackKind(t, ti), off: !!t.muted })));
     notes.sort((a, b) => a.col - b.col);
     const all = notes.filter((n) => !n.off).map((n) => n.m);
     const sectionAt = new Map(score.sections.map((s) => [s.col, s.text]));
@@ -238,20 +240,31 @@ export class SheetView {
       let hi = inLine.length ? Math.max(...inLine.map((n) => n.m)) + 1 : prevRange[1];
       while (hi - lo < 6) { hi++; if (hi - lo < 6) lo--; }
       prevRange = [lo + 1, hi - 1];
-      const rows = hi - lo + 1, rowsTop = top, rowsBot = rowsTop + rows * rowH;
+      const rowsTop = top, yOf = (m) => rowsTop + bh / 2 + 2 + (pos(hi) - pos(m)) * k; // middle of the note's row
+      const rowsBot = yOf(lo) + bh / 2 + 2;
       const hasLyr = score.lyrics.some((l) => l.col >= start && l.col < end);
       const H = rowsBot + (hasLyr ? 22 : 8);
       const units = lb.reduce((a, b) => a + b.len, 0);
       const unit = (W - left - right) / Math.max(units, perLine * mainLen);
       const xOf = (col) => left + (col - start) * unit;
-      const yOf = (m) => rowsTop + (hi - m) * rowH;
       let under = "", g = "";
-      // rows: black keys shaded, names on the left
+      // rows: a band per note (black keys darker), narrower where the notes sit close on the stem; on the left
+      // SPRED's dark shade of each note's colour, with the name where it fits (C first)
+      const named = [];
+      const byPlace = [];
       for (let m = hi; m >= lo; m--) {
-        const y = yOf(m);
-        if (BLACK.has(((m % 12) + 12) % 12)) under += `<rect class="roll-black" x="${left}" y="${y}" width="${xOf(end) - left}" height="${rowH}"/>`;
-        if (m % 12 === 0) g += `<line class="roll-c" x1="${left}" y1="${y + rowH}" x2="${xOf(end)}" y2="${y + rowH}"/>`;
-        g += `<text class="roll-name${m % 12 === 0 ? " c" : ""}" x="${left - 3}" y="${y + rowH - 2}" text-anchor="end">${pitchName(m)}</text>`;
+        const y = yOf(m), pc = ((m % 12) + 12) % 12;
+        const h = Math.max(1, Math.min(bh, (m < hi ? y - yOf(m + 1) : bh + 2) - 1.5, (m > lo ? yOf(m - 1) - y : bh + 2) - 1.5));
+        under += `<rect class="${BLACK.has(pc) ? "roll-black" : "roll-row"}" x="${left}" y="${y - h / 2}" width="${xOf(end) - left}" height="${h}"/>`;
+        if (pc === 0) g += `<line class="roll-c" x1="${left}" y1="${y + h / 2 + 0.5}" x2="${xOf(end)}" y2="${y + h / 2 + 0.5}"/>`;
+        g += `<rect x="2" y="${y - h / 2}" width="${left - 5}" height="${h}" fill="${rowFill(m)}"/>`;
+        byPlace.push({ m, y, rank: pc === 0 ? 0 : BLACK.has(pc) ? 2 : 1 });
+      }
+      for (const r of byPlace.sort((a, b) => a.rank - b.rank)) {
+        if (named.some((y) => Math.abs(y - r.y) < 8)) continue;
+        named.push(r.y);
+        g += `<rect x="2" y="${r.y - 4}" width="${left - 5}" height="8" fill="${rowFill(r.m)}"/>` +
+          `<text class="roll-name" x="${(left - 3) / 2 + 1}" y="${r.y + 2.6}" text-anchor="middle">${pitchName(r.m)}</text>`;
       }
       lb.forEach((bar, k) => {
         const x0 = xOf(bar.start), x1 = xOf(bar.start + bar.len);
@@ -267,8 +280,8 @@ export class SheetView {
       // notes (a note running into the next line is drawn up to the line's end and again on the next line)
       for (const n of inLine) {
         const xa = Math.max(xOf(start), xOf(n.col)) + 0.5, xb = Math.min(xOf(end), xOf(n.col + n.len)) - 0.5, y = yOf(n.m);
-        g += `<rect class="roll-note t${n.ti % 3}${n.off ? " off" : ""}" x="${xa}" y="${y + 1}" width="${Math.max(2, xb - xa)}" height="${rowH - 2}" rx="2"/>`;
-        if (xb - xa >= 19 && n.col >= start) g += `<text class="roll-label${n.off ? " off" : ""}" x="${xa + 2}" y="${y + rowH - 2.2}">${pitchName(n.m)}</text>`;
+        g += `<rect class="roll-note t${n.tk}${n.off ? " off" : ""}" x="${xa}" y="${y - bh / 2}" width="${Math.max(2, xb - xa)}" height="${bh}" rx="1.5" fill="${noteFill(n.m, n.tk)}"/>`;
+        if (xb - xa >= 19 && n.col >= start) g += `<text class="roll-label${n.off ? " off" : ""}" x="${xa + 2}" y="${y + 2.5}" fill="${noteText(n.tk)}">${pitchName(n.m)}</text>`;
       }
       // lyrics
       if (hasLyr) {
