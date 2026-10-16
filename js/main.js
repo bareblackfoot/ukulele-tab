@@ -11,7 +11,7 @@ import { Editor } from "./editor.js";
 import { Engine, Player } from "./audio.js";
 import { YouTubeSync, parseVideoId } from "./youtube.js";
 import { bridge, bridgeSettings, saveBridgeSettings, connectBridge, isRemote } from "./bridge.js";
-import { Practice, calibrate } from "./practice.js";
+import { Practice, calibrate, calibratePitch } from "./practice.js";
 import { alignLyrics } from "./lyrics.js";
 import { records, rankOf, pointsText } from "./records.js";
 import { Dashboard } from "./dashboard.js";
@@ -235,6 +235,15 @@ const SRC = skey("lastSource");
 function rememberSource(kind, file) { store.set(SRC, kind ? { kind, file, edited: false } : null); drawSongbar(); }
 // the song list on the left: examples, and my library's items (null when this login has none)
 const songbar = { examples: [], mine: null };
+// songs practised lately, newest first ({kind, file, at}): opened from the list or played in game mode
+const RECENT = skey("recentSongs");
+function practised() {
+  const src = store.get(SRC, null);
+  if (!src || !src.kind) return;
+  const list = store.get(RECENT, []).filter((r) => !(r.kind === src.kind && r.file === src.file));
+  store.set(RECENT, [{ kind: src.kind, file: src.file, at: Date.now() }, ...list].slice(0, 30));
+  drawSongbar();
+}
 
 function mutate(fn, label = "편집") {
   const before = JSON.stringify(score);
@@ -391,6 +400,8 @@ $("[data-opt=rate]").addEventListener("change", (e) => {
 });
 $("[data-opt=chordMode]").addEventListener("change", (e) => player.setOptions({ chordMode: e.target.value }));
 $("[data-opt=melody]").addEventListener("change", (e) => player.setOptions({ melody: e.target.checked }));
+// otamatone: the app's own melody is off at first; from the speaker it reaches the microphone as the notes to play
+if (INST.roll) { $("[data-opt=melody]").checked = false; player.setOptions({ melody: false }); }
 $("[data-opt=metronome]").addEventListener("change", (e) => player.setOptions({ metronome: e.target.checked }));
 $("[data-opt=volume]").addEventListener("input", (e) => engine.setVolume(+e.target.value / 100));
 
@@ -686,9 +697,9 @@ $(".dlg-gsync [data-act=gs-auto]").addEventListener("click", async () => {
   $$(".gs-meter .gs-dot").forEach((d) => d.remove());
   if (practice.input !== "mic") { msg.textContent = "입력이 키보드라서 자동 맞추기를 못 함"; return; }
   if (!(await practice.ensureMic())) { msg.textContent = "마이크를 못 씀"; return; }
-  msg.textContent = "딸깍 소리에 맞춰 10번 치세요…";
+  msg.textContent = INST.roll ? "스피커로 짧은 음 12개를 냄. 오타마톤은 치지 말고 조용히 기다리세요…" : "딸깍 소리에 맞춰 10번 치세요…";
   try {
-    const v = await calibrate(engine, practice, {
+    const v = await (INST.roll ? calibratePitch : calibrate)(engine, practice, {
       onTick: (d) => {
         const dot = document.createElement("span");
         dot.className = "gs-dot";
@@ -718,6 +729,7 @@ function showResult() {
     ...(r.judge ? { judge: r.judge, hold: r.hold } : {}),
   };
   const prevBest = records.add(rec);
+  practised();
   const dlg = $(".dlg-gresult");
   const modeName = { easy: "쉬움", std: "보통", pro: "어려움" }[r.mode];
   const targetName = r.judge ? JUDGE_KINDS[r.judge] : { beat: "코드 박마다", change: "코드 바뀔 때", pattern: "스트럼 패턴", melody: "멜로디" }[r.target];
@@ -955,6 +967,22 @@ function drawSongbar() {
     }
     if (!box.children.length) box.textContent = items.length ? "맞는 곡 없음" : "아직 없음";
   };
+  // the songs practised lately on top (those still in the lists: my library only while logged in)
+  const known = (r) => (r.kind === "library" ? songbar.mine || [] : songbar.examples).find((it) => it.file === r.file);
+  const recent = store.get(RECENT, []).map((r) => ({ r, it: known(r) })).filter((x) => x.it).slice(0, 8);
+  $$(".sb-recent-part").forEach((el) => { el.hidden = !recent.length || !!q; });
+  const box = $(".sb-recent");
+  box.textContent = "";
+  for (const { r, it } of recent) {
+    const sub = r.kind === "library" ? it.artist || "" : it.note || "";
+    const b = document.createElement("button");
+    b.type = "button";
+    b.innerHTML = `<b>${escHtml(it.title)}</b>${sub ? `<small>${escHtml(sub)}</small>` : ""}`;
+    b.title = sub ? `${it.title} · ${sub}` : it.title;
+    if (src && src.kind === r.kind && src.file === r.file) b.setAttribute("aria-current", "true");
+    b.addEventListener("click", () => openSong(r.kind, it));
+    box.appendChild(b);
+  }
   // my library is only for the owner account; everyone else does not see the section at all
   $$(".sb-mine-part").forEach((el) => { el.hidden = !songbar.mine; });
   if (songbar.mine) {
@@ -962,19 +990,22 @@ function drawSongbar() {
     $(".sb-count").textContent = `${songbar.mine.length}곡`;
   }
   fill($(".sb-examples"), songbar.examples, "example");
-  const cur = $(".sb-list [aria-current=true]");
+  const cur = $(".sb-list:not(.sb-recent) [aria-current=true]");
   if (cur) cur.scrollIntoView({ block: "nearest" });
 }
 
 async function openSong(kind, it) {
   if (narrowScreen()) showSongbar(false);
   try {
-    if (kind === "example") { await loadExample(it.file); return; }
-    const sess = records.session();
-    setScore(loadAnyFormat(await bridge.libraryGet(it.file, sess && sess.session)));
-    libraryFile = it.file;
-    rememberSource("library", it.file);
-    seek(0);
+    if (kind === "example") await loadExample(it.file);
+    else {
+      const sess = records.session();
+      setScore(loadAnyFormat(await bridge.libraryGet(it.file, sess && sess.session)));
+      libraryFile = it.file;
+      rememberSource("library", it.file);
+      seek(0);
+    }
+    practised();
   } catch (err) { status(`악보를 못 엶: ${err.message}`, true); }
 }
 

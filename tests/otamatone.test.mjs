@@ -221,3 +221,38 @@ test("low noise in the room is not read as a low note, alone or under the otamat
   const off = fr.filter((f) => f.m === null || Math.abs(f.m - played(f.t)) > 0.5);
   assert.ok(off.length <= fr.length * 0.05, JSON.stringify(off.slice(0, 5)));
 });
+
+// the sync measured from the speaker: a fake speaker puts the app's notes into the microphone `lat` seconds late
+async function measureLoop(lat) {
+  const { calibratePitch } = await import("../js/practice.js");
+  const sim = { t: 0 }, tones = [];
+  const engine = { ctx: { get currentTime() { return sim.t; } }, melodyBus: null, ota: (m, when, dur) => tones.push({ m, when, dur }) };
+  const { p } = fakePractice([], "both");
+  p.player.playing = false;
+  const an = new MicAnalyzer(SR);
+  const practice = { mic: { an }, pj: new PitchJudge(p, TIMING) };
+  let phase = 0, seed = 5, n = 0;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+  const pump = setInterval(() => {
+    for (let k = 0; k < 24; k++) { // 24 blocks of 128 samples: 64 ms of sound each time (faster than real time)
+      const block = new Float32Array(128);
+      for (let i = 0; i < 128; i++, n++) {
+        const t = n / SR - lat;
+        block[i] = rnd() * 0.002;
+        const tone = tones.find((q) => t >= q.when && t < q.when + q.dur);
+        if (!tone) continue;
+        phase = (phase + 440 * 2 ** ((tone.m - 69) / 12) / SR) % 1;
+        block[i] += 0.2 * (2 * phase - 1);
+      }
+      an.push((n - 1) / SR, block);
+    }
+    sim.t = n / SR;
+  }, 4);
+  try { return await calibratePitch(engine, practice); } finally { clearInterval(pump); }
+}
+
+test("sync from the speaker: the delay measured follows the delay of the sound", async () => {
+  const a = await measureLoop(0.06), b = await measureLoop(0.16);
+  assert.ok(Math.abs(b - a - 100) <= 12, `${a} ms and ${b} ms`);
+  assert.ok(a >= 50 && a <= 110, `${a} ms`);
+});

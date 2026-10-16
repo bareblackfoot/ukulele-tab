@@ -173,6 +173,7 @@ export class MicAnalyzer {
     this.skip = null;        // FFT bins left out of the onset measure (the app's own metronome tones)
     this.pending = new Float32Array(0);
     this.hp = null;          // a high-passed copy of the sound (otamatone game), see highPass()
+    this.tap = null;         // when an array: a copy of every onset found, which takeOnsets() does not empty
   }
 
   // Keep also a copy of the sound with everything under `hz` taken off (4th-order Butterworth, filtered as it
@@ -292,6 +293,7 @@ export class MicAnalyzer {
       this.lastOnsetT = cur.t;
       this.onsetLevel = this.onsetLevel ? 0.9 * this.onsetLevel + 0.1 * next.level : next.level;
       this.onsets.push({ t: cur.t - 0.012, strength: cur.f / (thr || 1), f: cur.f });
+      if (this.tap) this.tap.push(this.onsets[this.onsets.length - 1]);
     }
   }
 

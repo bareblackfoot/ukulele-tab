@@ -18,6 +18,7 @@ const JUMP = 2;              // semitones a frame may differ from a neighbouring
 const PEAK_FALL = 0.92;      // per frame: how fast the level of what was just played is forgotten (about 0.25 s)
 const LOW_CUT = 250;         // Hz: what is under it is not used to read pitch (the room's hum and rumble)
 const MIN_LEVEL = 0.01;      // a window quieter than this is not read at all (SPRED's own limit)
+const HARM_BELOW = 300;      // Hz: a pitch under this must have harmonics (the room's low noise has none)
 
 export class PitchJudge {
   // timing: the timing windows of the game modes (TIMING in practice.js)
@@ -37,6 +38,7 @@ export class PitchJudge {
     this.before = null;  // the pitch of the frame passed on last
     this.peak = 0;       // level of what was just played
     this.steady = null;  // {m, since} a pitch heard without changing, and since when
+    this.log = null;     // when an array: every frame passed on, {t: audio-clock time, m} (the sync measurement)
   }
 
   get kind() { return this.p.judgeKind; }
@@ -94,9 +96,10 @@ export class PitchJudge {
     const { f0, clarity } = yin(x, an.sr, 150, 1400);
     const going = !!this.held && this.held.m !== null;
     if (clarity < (going ? 0.6 : 0.75) || !(f0 > 0)) return null;
-    // a pitch with no harmonics is the room (a band of low noise, a fan tone), not the otamatone: the
-    // otamatone has 0.3 to 0.9 of its sound there, those under 0.1 (rarely 0.15)
-    if (harmonicShare(x, an.sr, f0) < (going ? 0.1 : 0.15)) return null;
+    // a low pitch with no harmonics is the room (a band of low noise, a fan tone, a hum), not the otamatone:
+    // low on the stem the otamatone has 0.3 to 0.9 of its sound there, those under 0.1 (rarely 0.15). High on
+    // the stem its notes are nearly pure (E5 to C6: 0 to 0.15), and the room's noise is not up there.
+    if (f0 < HARM_BELOW && harmonicShare(x, an.sr, f0) < (going ? 0.1 : 0.15)) return null;
     const m = 69 + 12 * Math.log2(f0 / 440);
     // a held note keeps the room estimate from climbing to it (then quiet notes were not heard); a pitch that
     // has not moved for 10 s is more likely the room (a fan, a hum) and may become the room level
@@ -108,6 +111,7 @@ export class PitchJudge {
   take(mid, m) {
     const p = this.p, pl = p.player;
     this.live = { m, at: performance.now() };
+    if (this.log) this.log.push({ t: mid, m });
     if (!pl.playing) return;
     const tc = mid - p.offsetMs / 1000; // when it was played: the microphone delay taken off
     if (tc < pl.startCtx) return;

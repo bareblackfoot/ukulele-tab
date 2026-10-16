@@ -527,11 +527,13 @@ export class Practice {
 }
 
 // Input latency calibration: play clicks, find the microphone onsets, take the median delay.
+// (The game panel's own loop takes the onsets every frame while it waits, so these are read from a tap of their
+// own; reading takeOnsets() here found none and the measurement always failed.)
 export async function calibrate(engine, practice, { clicks = 10, bpm = 90, onTick } = {}) {
   if (!practice.mic) throw new Error("마이크가 켜져 있지 않음");
   const ctx = engine.ctx;
   const an = practice.mic.an;
-  an.takeOnsets();
+  an.tap = [];
   const t0 = ctx.currentTime + 0.6;
   const beat = 60 / bpm;
   const times = [];
@@ -539,15 +541,49 @@ export async function calibrate(engine, practice, { clicks = 10, bpm = 90, onTic
   const deltas = [];
   await new Promise((resolve) => {
     const iv = setInterval(() => {
-      for (const o of an.takeOnsets()) {
+      for (const o of an.tap.splice(0)) {
         const near = times.reduce((a, b) => (Math.abs(b - o.t) < Math.abs(a - o.t) ? b : a));
         const d = (o.t - near) * 1000;
         if (Math.abs(d) < 300 && times.indexOf(near) >= 2) { deltas.push(d); if (onTick) onTick(d); }
       }
-      if (ctx.currentTime > t0 + clicks * beat + 0.5) { clearInterval(iv); resolve(); }
+      if (ctx.currentTime > t0 + clicks * beat + 0.5) { clearInterval(iv); an.tap = null; resolve(); }
     }, 30);
   });
   if (deltas.length < 4) throw new Error(`박에 맞춘 소리를 ${deltas.length}번만 들음. 클릭마다 한 번씩 쳐야 함`);
+  deltas.sort((a, b) => a - b);
+  return Math.round(deltas[deltas.length >> 1]);
+}
+
+// Otamatone: the app plays short notes from the speaker and reads them back with the game's own pitch reading,
+// so the delay measured is the whole way from a note sounding to the game hearing it (speaker, room, microphone,
+// browser and the reading itself): what a player playing along with what they hear comes in late by. Nothing to
+// play; it needs the speaker, not earphones.
+export async function calibratePitch(engine, practice, { onTick } = {}) {
+  if (!practice.mic || !practice.pj) throw new Error("마이크가 켜져 있지 않음");
+  const ctx = engine.ctx, an = practice.mic.an, pj = practice.pj;
+  // notes a few semitones apart and gaps of different lengths, so no note is taken for the one before or after
+  const notes = [69, 76, 72, 79, 74, 81, 71, 78, 73, 80, 75, 70];
+  const gaps = [0.42, 0.5, 0.38, 0.55, 0.45, 0.4, 0.52, 0.36, 0.48, 0.44, 0.5];
+  const times = [];
+  let t = ctx.currentTime + 0.5;
+  notes.forEach((m, i) => { engine.ota(m, t, 0.2, 0.35, engine.melodyBus); times.push(t); t += gaps[i] || 0.45; });
+  pj.log = [];
+  await new Promise((resolve) => {
+    const iv = setInterval(() => {
+      pj.update(an);
+      if (ctx.currentTime > t + 0.6) { clearInterval(iv); resolve(); }
+    }, 20);
+  });
+  const log = pj.log;
+  pj.log = null;
+  const deltas = [];
+  times.forEach((T, i) => {
+    const f = log.find((e) => e.t >= T - 0.08 && e.t <= T + 0.45 && e.m !== null && Math.abs(e.m - notes[i]) <= 0.6);
+    if (!f) return;
+    deltas.push((f.t - T) * 1000);
+    if (onTick) onTick(deltas[deltas.length - 1]);
+  });
+  if (deltas.length < 6) throw new Error(`스피커로 낸 음 ${notes.length}개 중 ${deltas.length}개만 마이크로 들림. 이어폰 말고 스피커로, 소리를 키우고 다시 하세요`);
   deltas.sort((a, b) => a - b);
   return Math.round(deltas[deltas.length >> 1]);
 }
