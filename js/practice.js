@@ -357,7 +357,7 @@ export class Practice {
     st.score = this.points();
     if (flash) {
       this.flash = { grade, text: LABEL[grade], sub: tg && tg !== "perfect" && grade !== "miss" && dMs !== null ? (dMs < 0 ? "EARLY" : "LATE") : "", t: performance.now(), combo: st.combo, midi: target.midi, dMs };
-      this.bursts.push({ t: performance.now(), grade, midi: target.midi });
+      this.bursts.push({ t: performance.now(), grade, midi: target.midi, tk: target.tk });
     }
     if (st.combo && (st.combo === 10 || st.combo === 20 || st.combo === 30 || st.combo % 50 === 0)) this.milestone = { n: st.combo, t: performance.now() };
     if (heard) this.ui.heard(heard);
@@ -369,7 +369,7 @@ export class Practice {
   flashOnly(target, grade, d) {
     const sub = grade !== "perfect" && grade !== "miss" && d !== null ? (d < 0 ? "EARLY" : "LATE") : "";
     this.flash = { grade, text: LABEL[grade], sub, t: performance.now(), combo: grade === "miss" ? 0 : this.stats.combo + 1, midi: target.midi, dMs: d === null ? null : d * 1000 };
-    this.bursts.push({ t: performance.now(), grade, midi: target.midi });
+    this.bursts.push({ t: performance.now(), grade, midi: target.midi, tk: target.tk });
   }
 
   // the note the microphone hears now (its name), a few times a second

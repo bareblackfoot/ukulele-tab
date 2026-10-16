@@ -119,14 +119,24 @@ export function yin(x, sr, fmin = 180, fmax = 1400) {
   // otamatone) the normalised dip there comes out deeper than at tau itself (the normalising mean grows with the
   // lag), and the note read an octave low. The plain difference tells them apart: at the note's period and at
   // twice it, both are what the noise leaves (about the same); half the period of a real lower note leaves its
-  // odd harmonics (much more). Take the shortest period whose difference is about as small.
+  // odd harmonics (much more). Take the shortest period whose difference is about as small, or whose
+  // correlation (NSDF, as the McLeod method SPRED uses) is at least 3/4 of the longer one's: a high note, nearly
+  // a pure tone, with a little of the octave below in it (a voice in the song from the speaker, a buzz of the
+  // instrument) repeats only every 2 tau and read an octave low.
+  const W = n - tauMax, P = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) P[i + 1] = P[i] + x[i] * x[i];
+  const nsdf = (t) => 1 - d[t] / Math.max(1e-12, P[W] + P[W + t] - P[t]);
   for (let again = true; again;) {
     again = false;
     for (const k of [2, 3]) {
       const c = Math.round(best / k), w = Math.max(2, Math.round(c * 0.03));
       let b = -1;
       for (let tau = Math.max(tauMin, c - w); tau <= c + w; tau++) if (b < 0 || cmnd[tau] < cmnd[b]) b = tau;
-      if (b > tauMin && cmnd[b] < cmnd[b - 1] && cmnd[b] <= cmnd[b + 1] && d[b] <= d[best] * 1.3) { best = b; again = true; break; }
+      if (b > tauMin && cmnd[b] < cmnd[b - 1] && cmnd[b] <= cmnd[b + 1] && (d[b] <= d[best] * 1.3 || nsdf(b) >= 0.75 * nsdf(best))) {
+        best = b;
+        again = true;
+        break;
+      }
     }
   }
   // parabolic interpolation

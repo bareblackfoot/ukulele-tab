@@ -32,7 +32,6 @@ export class PitchJudge {
   reset() {
     this.nextT = null;   // audio-clock time of the next analysis window
     this.open = 0;       // first target not finished
-    this.trail = [];     // {st: score time, m: MIDI (fractional) or null} heard while playing
     this.live = null;    // {m, at} the latest pitch, also while stopped
     this.shownAt = 0;
     this.held = null;    // {mid, m} the newest frame, passed on when the next one shows whether it stands alone
@@ -81,7 +80,6 @@ export class PitchJudge {
       this.take(prev.mid, v !== null && (near(this.before) || near(m)) ? v : null);
       this.before = v;
     }
-    if (this.trail.length > 500) this.trail.splice(0, this.trail.length - 500);
   }
 
   // the pitch in one window of the high-passed sound (MIDI, fractional), or null for the room, a sound much
@@ -120,7 +118,6 @@ export class PitchJudge {
     const tc = mid - p.offsetMs / 1000; // when it was played: the microphone delay taken off
     if (tc < pl.startCtx) return;
     const st = p.scoreTimeOf(tc);
-    this.trail.push({ st, m });
     this.feed(st, m);
   }
 
@@ -202,7 +199,6 @@ export class PitchJudge {
 
   rewind() {
     this.open = 0;
-    this.trail = [];
     this.nextT = null;
     this.held = null;
     this.before = null;

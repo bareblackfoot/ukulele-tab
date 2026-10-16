@@ -175,31 +175,29 @@ export class PitchLane {
       c.fillStyle = "#fff";
       c.fillText(pitchName(r.m), 15, r.y + 0.5);
     }
-    // the pitch heard: a green line to the left of the hit line, a glowing dot on it
+    // the pitch heard: a glowing dot on the hit line (no line of the pitches before: it cluttered the lane).
+    // While it is on the note at the hit line, that note breaks up in sparks of its own colour.
     const pj = practice.pj;
     if (pj) {
-      c.save();
-      c.strokeStyle = DOT;
-      c.globalAlpha = 0.85;
-      c.lineWidth = 2.5;
-      c.lineJoin = "round";
-      c.shadowColor = DOT;
-      c.shadowBlur = 6;
-      let open = false, lastX = -1e9;
-      c.beginPath();
-      for (const f of pj.trail) {
-        const x = X(tm.timeToCol(f.st));
-        if (x < 30 || f.m === null || x - lastX > 12) { if (open) c.stroke(); open = false; c.beginPath(); }
-        if (x < 30 || f.m === null) { lastX = -1e9; continue; }
-        const y = Y(clamp(f.m));
-        if (!open) { c.moveTo(x, y); open = true; } else c.lineTo(x, y);
-        lastX = x;
-      }
-      if (open) c.stroke();
-      c.restore();
       const L = pj.live;
       if (L && L.m !== null && now - L.at < 200) {
         const y = Y(clamp(L.m));
+        const on = atHit ? pj.near(L.m, atHit.midi) : null;
+        if (on) {
+          const col = noteFill(atHit.midi, atHit.tk || 0), yn = Y(atHit.midi);
+          for (this.sparkDue = (this.sparkDue || 0) + dt * 45; this.sparkDue >= 1; this.sparkDue--) {
+            const a = Math.PI * (0.55 + Math.random() * 0.9), v = 60 + Math.random() * 110; // up and back, away from the coming notes
+            this.sparks.push({ x: hitX, y: yn + (Math.random() - 0.5) * bh * 0.8, vx: Math.cos(a) * v, vy: Math.sin(a) * v * -0.8, life: 0.7 + Math.random() * 0.3, color: col });
+          }
+          c.save();
+          c.globalCompositeOperation = "lighter";
+          c.shadowColor = col;
+          c.shadowBlur = 18;
+          c.fillStyle = col;
+          c.globalAlpha = 0.55 + 0.25 * Math.sin(now / 70);
+          c.fillRect(hitX - 3, yn - bh / 2 - 2, 6, bh + 4);
+          c.restore();
+        }
         c.save();
         c.shadowColor = DOT;
         c.shadowBlur = 14;
@@ -212,12 +210,11 @@ export class PitchLane {
         c.restore();
         // the note heard, by name only (no cents: «E4 +12» read badly); green when it counts as the note at the
         // hit line, orange when it does not, white with no note there
-        const on = atHit ? pj.near(L.m, atHit.midi) : null;
         const txt = on ? pitchName(atHit.midi) : pitchName(Math.round(L.m));
         c.font = "bold 13px Arial, system-ui, sans-serif";
         c.textAlign = "right";
         c.textBaseline = "middle";
-        // above the dot (below it near the top), so the line it leaves stays in sight
+        // above the dot (below it near the top)
         const tw = c.measureText(txt).width, ty = y - 17 >= 9 ? y - 17 : Math.min(H - 9, y + 17);
         c.fillStyle = "rgba(0,0,0,.65)";
         c.fillRect(hitX - 12 - tw - 6, ty - 9, tw + 10, 18);
@@ -225,23 +222,24 @@ export class PitchLane {
         c.fillText(txt, hitX - 13, ty + 0.5);
       }
     }
-    // a ring and sparks where a note was judged
+    // a ring and sparks where a note was judged, in the colour of that note (a miss: the miss colour, no sparks)
     practice.bursts = practice.bursts.filter((b) => now - b.t < 400);
     for (const b of practice.bursts) {
       const y = b.midi !== undefined ? Y(clamp(b.midi)) : H / 2;
+      const col = b.grade === "miss" || b.midi === undefined ? JUDGE[b.grade] : noteFill(b.midi, b.tk || 0);
       if (b.t > this.seenBurst) {
         this.seenBurst = b.t;
-        const n = b.grade === "perfect" ? 16 : b.grade === "miss" ? 0 : 9;
+        const n = b.grade === "perfect" ? 22 : b.grade === "miss" ? 0 : 12;
         for (let i = 0; i < n; i++) {
-          const a = Math.random() * Math.PI * 2, v = 70 + Math.random() * 150;
-          this.sparks.push({ x: hitX, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 40, life: 1, color: JUDGE[b.grade] });
+          const a = Math.random() * Math.PI * 2, v = 70 + Math.random() * 170;
+          this.sparks.push({ x: hitX, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 40, life: 1, color: col });
         }
       }
       const k = (now - b.t) / 400;
       c.save();
       c.globalAlpha = 1 - k;
-      c.strokeStyle = JUDGE[b.grade];
-      c.shadowColor = JUDGE[b.grade];
+      c.strokeStyle = col;
+      c.shadowColor = col;
       c.shadowBlur = 10;
       c.lineWidth = b.grade === "perfect" ? 4 : 2;
       c.beginPath(); c.arc(hitX, y, 9 + k * 24, 0, Math.PI * 2); c.stroke();
