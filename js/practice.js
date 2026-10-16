@@ -40,6 +40,7 @@ export class Practice {
     this.deviceId = store.get(skey("practice.device"), ""); // "" = the device's default input
     this.mic = null;
     this.targets = [];
+    this.micOff = false; // switched off in the game panel: not opened again until switched on
     this.strokes = [];
     this.pending = [];
     this.flash = null;
@@ -160,7 +161,7 @@ export class Practice {
 
   async ensureMic() {
     this.engine.ensure();
-    if (this.input === "mic" && !this.mic) {
+    if (this.input === "mic" && !this.mic && !this.micOff) {
       const ctx = this.engine.ctx;
       try {
         this.engine.setRecording(true);
@@ -207,9 +208,18 @@ export class Practice {
     return { best, bestScore: bestV, expectedScore: exp ? cosine(c, exp) : 0 };
   }
 
+  // game mode off: the microphone is let go (the browser's mic sign goes away, an iPad plays at full quality again)
   stop() {
     this.on = false;
     this.pending = [];
+    this.micOff = false;
+    this.closeMic();
+  }
+
+  // the microphone switch of the game panel
+  async setMic(on) {
+    this.micOff = !on;
+    if (on) await this.ensureMic(); else this.closeMic();
   }
 
   // sound inputs of this device: [{id, label}] (names show after the microphone was allowed once)
@@ -405,7 +415,7 @@ export class Practice {
         return false;
       });
     }
-    if (p.playing && !this.pitchMode) {
+    if (p.playing && !this.pitchMode && (this.input === "keys" || this.mic)) { // nothing is missed while the mic is off
       // targets whose window has passed without a strum are missed
       const s = p.scoreTime();
       const win = TIMING[this.mode][2] / 1000 + 0.05;

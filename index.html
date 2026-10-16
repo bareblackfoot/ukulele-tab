@@ -6,15 +6,16 @@
 <title>우쿨렐레 코드 악보</title>
 <meta name="description" content="유튜브에 맞춰 재생하는 우쿨렐레 코드·TAB 악보. 위쪽에 다음 코드 운지가 뜸.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3v13' stroke='%23a8743f' stroke-width='3'/%3E%3Ccircle cx='16' cy='22' r='8' fill='%23a8743f'/%3E%3Ccircle cx='16' cy='22' r='2.5' fill='%23fff'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/app.css?v=dc24b0eca0">
+<link rel="stylesheet" href="css/app.css?v=bfd3b1f930">
 <!-- importmap -->
-<script type="importmap">{"imports":{"./js/audio.js":"./js/audio.js?v=dc24b0eca0","./js/bridge.js":"./js/bridge.js?v=dc24b0eca0","./js/chordbar.js":"./js/chordbar.js?v=dc24b0eca0","./js/chords.js":"./js/chords.js?v=dc24b0eca0","./js/dashboard.js":"./js/dashboard.js?v=dc24b0eca0","./js/diagram.js":"./js/diagram.js?v=dc24b0eca0","./js/drills.js":"./js/drills.js?v=dc24b0eca0","./js/drillview.js":"./js/drillview.js?v=dc24b0eca0","./js/dsp.js":"./js/dsp.js?v=dc24b0eca0","./js/editor.js":"./js/editor.js?v=dc24b0eca0","./js/fingering.js":"./js/fingering.js?v=dc24b0eca0","./js/instrument.js":"./js/instrument.js?v=dc24b0eca0","./js/lane.js":"./js/lane.js?v=dc24b0eca0","./js/lyrics.js":"./js/lyrics.js?v=dc24b0eca0","./js/main.js":"./js/main.js?v=dc24b0eca0","./js/model.js":"./js/model.js?v=dc24b0eca0","./js/pitchcolor.js":"./js/pitchcolor.js?v=dc24b0eca0","./js/pitchgame.js":"./js/pitchgame.js?v=dc24b0eca0","./js/pitchlane.js":"./js/pitchlane.js?v=dc24b0eca0","./js/practice.js":"./js/practice.js?v=dc24b0eca0","./js/records.js":"./js/records.js?v=dc24b0eca0","./js/sheet.js":"./js/sheet.js?v=dc24b0eca0","./js/site.js":"./js/site.js?v=dc24b0eca0","./js/strumfit.js":"./js/strumfit.js?v=dc24b0eca0","./js/strumgame.js":"./js/strumgame.js?v=dc24b0eca0","./js/strums.js":"./js/strums.js?v=dc24b0eca0","./js/strumview.js":"./js/strumview.js?v=dc24b0eca0","./js/youtube.js":"./js/youtube.js?v=dc24b0eca0"}}</script>
+<script type="importmap">{"imports":{"./js/audio.js":"./js/audio.js?v=bfd3b1f930","./js/bridge.js":"./js/bridge.js?v=bfd3b1f930","./js/chordbar.js":"./js/chordbar.js?v=bfd3b1f930","./js/chords.js":"./js/chords.js?v=bfd3b1f930","./js/dashboard.js":"./js/dashboard.js?v=bfd3b1f930","./js/diagram.js":"./js/diagram.js?v=bfd3b1f930","./js/drills.js":"./js/drills.js?v=bfd3b1f930","./js/drillview.js":"./js/drillview.js?v=bfd3b1f930","./js/dsp.js":"./js/dsp.js?v=bfd3b1f930","./js/editor.js":"./js/editor.js?v=bfd3b1f930","./js/fingering.js":"./js/fingering.js?v=bfd3b1f930","./js/instrument.js":"./js/instrument.js?v=bfd3b1f930","./js/lane.js":"./js/lane.js?v=bfd3b1f930","./js/lyrics.js":"./js/lyrics.js?v=bfd3b1f930","./js/main.js":"./js/main.js?v=bfd3b1f930","./js/model.js":"./js/model.js?v=bfd3b1f930","./js/pitchcolor.js":"./js/pitchcolor.js?v=bfd3b1f930","./js/pitchgame.js":"./js/pitchgame.js?v=bfd3b1f930","./js/pitchlane.js":"./js/pitchlane.js?v=bfd3b1f930","./js/practice.js":"./js/practice.js?v=bfd3b1f930","./js/records.js":"./js/records.js?v=bfd3b1f930","./js/sheet.js":"./js/sheet.js?v=bfd3b1f930","./js/site.js":"./js/site.js?v=bfd3b1f930","./js/strumfit.js":"./js/strumfit.js?v=bfd3b1f930","./js/strumgame.js":"./js/strumgame.js?v=bfd3b1f930","./js/strums.js":"./js/strums.js?v=bfd3b1f930","./js/strumview.js":"./js/strumview.js?v=bfd3b1f930","./js/youtube.js":"./js/youtube.js?v=bfd3b1f930"}}</script>
 <!-- /importmap -->
 </head>
 <body>
 <div class="app">
   <header class="topbar">
     <div class="brand"><span class="logo" aria-hidden="true"></span><b>우쿨렐레 코드 악보</b></div>
+    <span class="viewtabs site-switch" role="group" aria-label="악기"></span>
     <span class="viewtabs kind-switch" role="group" aria-label="기타 종류" hidden>
       <button type="button" class="toggle" data-act="kind-acoustic" aria-pressed="true">통기타</button>
       <button type="button" class="toggle" data-act="kind-electric" aria-pressed="false" title="카포 없이 원래 조, 일렉기타 소리, 파워코드 선택">일렉</button>
@@ -32,8 +33,6 @@
           <hr>
           <button type="button" data-act="details">곡 정보·튜닝·카포</button>
           <button type="button" data-act="lyrics">가사 붙여넣어 맞추기</button>
-          <hr>
-          <button type="button" data-act="other-site">기타 악보 사이트로</button>
         </div>
       </div>
       <div class="menu">
@@ -113,7 +112,7 @@
         <button type="button" class="toggle" data-mode="pro">어려움</button>
       </span>
       <label>입력 <select class="g-input"><option value="mic">마이크</option><option value="keys">키보드 F·J (박자만)</option></select></label>
-      <span class="g-state">준비</span>
+      <button type="button" class="g-state" data-act="g-mic" title="마이크 켜고 끄기">준비</button>
     </div>
     <div class="g-diag">마이크 <b class="g-mic">--</b> · 들린 코드/음 <b class="g-heard">--</b> · 음량 <i class="g-meter"><i></i></i></div>
     <div class="g-lane-wrap"><div class="g-lane" aria-hidden="true"></div><div class="g-judge" aria-hidden="true"></div><div class="g-combo" aria-hidden="true"></div></div>
@@ -317,6 +316,6 @@
   </form>
 </dialog>
 
-<script type="module" src="js/main.js?v=dc24b0eca0"></script>
+<script type="module" src="js/main.js?v=bfd3b1f930"></script>
 </body>
 </html>

@@ -209,6 +209,7 @@ function setKind(electric) {
 }
 
 function setScore(s, { keepHistory = false, msg } = {}) {
+  const fresh = !keepHistory; // another sheet, not an edit of this one
   score = s;
   if (!keepHistory) { undoStack = []; redoStack = []; }
   showScore();
@@ -217,7 +218,9 @@ function setScore(s, { keepHistory = false, msg } = {}) {
   yt.offsetMs = score.youtube.offsetMs || 0;
   $(".yt-url").value = score.youtube.videoId || "";
   $(".yt-offset").value = String(score.youtube.offsetMs || 0);
-  if (!$(".yt").hidden && score.youtube.videoId) yt.load(score.youtube.videoId);
+  // a newly opened sheet with a video comes with the video box; one without it closes the box
+  if (fresh && !!score.youtube.videoId !== !$(".yt").hidden) toggleYT(!!score.youtube.videoId);
+  else if (!$(".yt").hidden && score.youtube.videoId) yt.load(score.youtube.videoId);
   document.title = (score.meta.title ? score.meta.title + " · " : "") + INST.title;
   updatePosition(player.position());
   if (msg !== undefined) status(msg); // an empty one clears what the last sheet said
@@ -402,9 +405,11 @@ $(".yt-close").addEventListener("click", () => toggleYT(false));
 // the video box: drag it by its title, make it smaller or bigger; place and size are remembered in this browser
 const YT_WIDTHS = [200, 280, 420, 560, 720];
 const ytBox = { ...store.get(skey("ytbox"), {}) };
+// the size step the box has until resized: the smallest on a phone, where it now opens with every sheet that has a video
+const ytSize = () => ytBox.size ?? (window.innerWidth < 560 ? 0 : 2);
 function placeYT() {
   const el = $(".yt");
-  const w = Math.min(YT_WIDTHS[ytBox.size ?? 2] || 420, window.innerWidth - 16);
+  const w = Math.min(YT_WIDTHS[ytSize()] || 420, window.innerWidth - 16);
   el.style.width = `${w}px`;
   if (ytBox.x == null) return;   // default corner from the stylesheet
   const r = el.getBoundingClientRect();
@@ -413,7 +418,7 @@ function placeYT() {
   Object.assign(el.style, { left: `${x}px`, top: `${y}px`, right: "auto", bottom: "auto" });
 }
 $$(".yt-size").forEach((b) => b.addEventListener("click", () => {
-  ytBox.size = Math.max(0, Math.min(YT_WIDTHS.length - 1, (ytBox.size ?? 2) + +b.dataset.step));
+  ytBox.size = Math.max(0, Math.min(YT_WIDTHS.length - 1, ytSize() + +b.dataset.step));
   store.set(skey("ytbox"), ytBox);
   placeYT();
 }));
@@ -491,6 +496,7 @@ const actions = {
   practice: () => togglePractice(),
   "g-rules": () => $(".dlg-grules").showModal(),
   "g-sync": () => openSync(),
+  "g-mic": async () => { await practice.setMic(!practice.mic); syncPracticeControls(); },
   "gr-sync": (b) => { setSync(+b.dataset.v); b.hidden = true; status(`게임 싱크 ${$(".g-sync-val").textContent}`); },
   "gr-retry": () => { $(".dlg-gresult").close(); retry(); },
   new: () => {
@@ -599,7 +605,9 @@ function syncPracticeControls() {
   $(".g-sync-val").textContent = `${v >= 0 ? "+" : ""}${v} ms`;
   $(".gs-val").textContent = `${v >= 0 ? "+" : ""}${v} ms`;
   const st = $(".g-state");
-  st.textContent = !practice.on ? "꺼짐" : practice.input === "keys" ? "키보드 F·J" : practice.mic ? "마이크 켜짐" : "마이크 없음";
+  st.textContent = !practice.on ? "꺼짐" : practice.input === "keys" ? "키보드 F·J" : practice.mic ? "마이크 켜짐" : practice.micOff ? "마이크 꺼짐" : "마이크 없음";
+  st.disabled = !practice.on || practice.input === "keys";
+  st.title = practice.mic ? "누르면 마이크를 끔" : "누르면 마이크를 켬";
   st.classList.toggle("live", practice.on && (practice.input === "keys" || !!practice.mic));
   $(".g-mic").textContent = practice.mic ? "켜짐" : practice.input === "keys" ? "안 씀" : "--";
 }
@@ -772,18 +780,59 @@ document.addEventListener("keydown", (e) => {
 
 // ---------------------------------------------------------------- files
 
-// links to the sites of the other instruments, in place of the one button in the page
-{
-  const btn = $("[data-act=other-site]");
-  for (const it of Object.values(INSTRUMENTS)) {
-    if (it.id === INST.id) continue;
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = `${it.name} 악보 사이트로`;
-    b.addEventListener("click", () => { location.href = it.url; });
-    btn.before(b);
+// the three instruments' sites in the top bar. They sit on one web origin, so the song open here is handed
+// over in this browser's storage: the other site opens its own version of it (the same example, or the same
+// title in its part of my library), else this sheet moved onto its instrument.
+const HANDOFF = "tabsite.handoff";
+for (const it of Object.values(INSTRUMENTS)) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "toggle";
+  b.textContent = it.name;
+  b.setAttribute("aria-pressed", String(it.id === INST.id));
+  if (it.id !== INST.id) {
+    b.title = `지금 곡을 ${it.name} 악보로 열기`;
+    b.addEventListener("click", () => {
+      const src = store.get(SRC, null);
+      store.set(HANDOFF, {
+        at: Date.now(), from: INST.id, title: score.meta.title || "", artist: score.meta.artist || "",
+        example: src && !src.edited && src.kind === "example" ? src.file : null, score: JSON.parse(toJSON(score)),
+      });
+      location.href = it.url;
+    });
   }
-  btn.remove();
+  $(".site-switch").appendChild(b);
+}
+
+// the song handed over by another instrument's site (a minute old at most): true when it was opened
+async function openHandoff() {
+  const ho = store.get(HANDOFF, null);
+  if (!ho) return false;
+  store.set(HANDOFF, null);
+  if (ho.from === INST.id || Date.now() - ho.at > 60000) return false;
+  const from = INSTRUMENTS[ho.from] ? INSTRUMENTS[ho.from].name : "다른";
+  if (ho.example) { await loadExample(ho.example); return true; }
+  const sess = records.session();
+  if (ho.title && sess && await autoPair()) {
+    try {
+      const norm = (t) => String(t || "").toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
+      const { items } = await bridge.library(sess.session);
+      const same = items.filter((x) => norm(x.title) === norm(ho.title));
+      const it = same.find((x) => norm(x.artist) === norm(ho.artist)) || same[0];
+      if (it) {
+        setScore(loadAnyFormat(await bridge.libraryGet(it.file, sess.session)), { msg: `${from} 악보에서 넘어옴: 내 악보의 ${INST.name}판을 엶` });
+        libraryFile = it.file;
+        rememberSource("library", it.file);
+        return true;
+      }
+    } catch (_) { /* not in my library here: the handed sheet below */ }
+  }
+  if (!ho.score) return false;
+  const s = loadAnyFormat(ho.score);
+  setScore(s, { msg: describeImport(s) });
+  libraryFile = null;
+  rememberSource(null);
+  return true;
 }
 
 syncKind();
@@ -1298,6 +1347,7 @@ window.addEventListener("resize", () => { if (!editing) { sheet.render(shown, se
   try {
     if (params.get("job")) { await loadJob(params.get("job")); return; }
     if (params.get("example")) { await loadExample(params.get("example") + ".json"); return; }
+    if (await openHandoff()) return;
     const last = store.get(skey("last"), null);
     const src = store.get(SRC, null);
     if (src && !src.edited && src.kind === "example") { await loadExample(src.file); return; }

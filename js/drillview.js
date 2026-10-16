@@ -58,6 +58,7 @@ export class DrillView {
   stopAll() {
     this.stopListening();
     this.stopChange();
+    if (!this.d.practice.on) this.d.practice.closeMic(); // the game mode keeps it while it is on
   }
 
   shapeText(name) {

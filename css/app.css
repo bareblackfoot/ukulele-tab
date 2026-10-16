@@ -46,6 +46,9 @@ input[type="text"], input[type="number"] { background: var(--btn); border: 1px s
 .app > .views { flex: 1 1 auto; min-height: 0; }
 .topbar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--grid); background: var(--panel); flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.site-switch button { font-size: 13px; padding: 3px 9px; }
+.site-switch button[aria-pressed="true"] { cursor: default; }
+@media (max-width: 560px) { .brand b { display: none; } } /* the instrument switch names the site */
 .logo { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); box-shadow: inset 0 0 0 5px var(--panel), inset 0 0 0 9px var(--accent); }
 .menus { display: flex; gap: 6px; align-items: center; flex: 1; flex-wrap: wrap; }
 .menu { position: relative; }
@@ -163,7 +166,8 @@ button.game-btn[aria-pressed="true"] { background: #2f9e44; border-color: #2f9e4
 .g-modes button { border-radius: 0; margin-left: -1px; padding: 4px 9px; }
 .g-modes button:first-child { border-radius: 6px 0 0 6px; }
 .g-modes button:last-child { border-radius: 0 6px 6px 0; }
-.g-state { font-size: 12px; border: 1px solid var(--btn-b); border-radius: 999px; padding: 1px 10px; color: var(--ink2); }
+.g-state { font-size: 12px; border: 1px solid var(--btn-b); border-radius: 999px; padding: 1px 10px; color: var(--ink2); background: transparent; }
+.g-state:disabled { cursor: default; opacity: 1; }
 .g-state.live { color: #2f9e44; border-color: #2f9e44; }
 .g-diag { font-size: 12px; color: var(--ink2); margin: 6px 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .g-meter { display: inline-block; width: 90px; height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; vertical-align: middle; }

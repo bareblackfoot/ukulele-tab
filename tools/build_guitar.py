@@ -29,7 +29,6 @@ INDEX = [
     ("가로 (A현이 위)", "가로 (1번 줄이 위)"),
     ("이 PC의 구글 드라이브 우쿨렐레 폴더", "이 PC의 구글 드라이브 기타 폴더"),
     ("멜로디를 우쿨렐레로 옮기기", "멜로디를 기타로 옮기기"),
-    ("기타 악보 사이트로", "우쿨렐레 악보 사이트로"),
 ]
 
 HELP = [
@@ -100,10 +99,10 @@ def main():
     (out / "help.html").write_text(hlp, encoding="utf-8")
     (out / "README.md").write_text(README, encoding="utf-8")
 
-    # ukulele words left on the guitar pages (the menu link back and the file types it opens are meant)
+    # ukulele words left on the guitar pages (the instrument switch and the file types it opens are meant)
     for name in ["index.html", "help.html"]:
         for line in (out / name).read_text(encoding="utf-8").splitlines():
-            if "우쿨렐레" in line and "우쿨렐레 악보 사이트로" not in line and "기타·우쿨렐레·SPRED" not in line \
+            if "우쿨렐레" in line and "우쿨렐레 · 기타 · 오타마톤" not in line and "기타·우쿨렐레·SPRED" not in line \
                     and "우쿨렐레 사이트와 같이" not in line and "우쿨렐레 악보는" not in line:
                 sys.exit(f"{name}에 우쿨렐레 문구가 남음: {line.strip()[:100]}")
     subprocess.run([sys.executable, str(SRC / "tools" / "stamp.py"), str(out)], check=True)

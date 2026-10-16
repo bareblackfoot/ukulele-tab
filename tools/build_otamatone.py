@@ -72,7 +72,7 @@ def main():
     # opens are meant)
     for line in (out / "index.html").read_text(encoding="utf-8").splitlines():
         if "우쿨렐레" in line and "SPRED·우쿨렐레·기타" not in line and "chord-only" not in line \
-                and "기타 악보 사이트로" not in line and "High-G" not in line:
+                and "High-G" not in line:
             sys.exit(f"index.html에 우쿨렐레 문구가 남음: {line.strip()[:100]}")
     subprocess.run([sys.executable, str(SRC / "tools" / "stamp.py"), str(out)], check=True)
     print("built", out)
