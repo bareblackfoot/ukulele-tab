@@ -272,3 +272,23 @@ test("score out of 100: a note played again after going back counts once", async
   assert.equal(p.stats.score, Math.round(10000 * (5 + 5 * 2 / 3) / 10) / 100);
   assert.equal(p.result().score, p.stats.score);
 });
+
+test("a mellow low note (nearly a pure tone, as this app's own voice from B3 up) is read, not thrown away as noise", () => {
+  for (const midi of [56, 59, 62]) {
+    const notes = [{ t0: 0.5, t1: 1.5, midi }];
+    const x = new Float32Array(SR * 2.5);
+    let seed = 9;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+    for (let i = 0; i < x.length; i++) {
+      const t = i / SR;
+      x[i] = rnd() * 0.001 + (t >= 0.5 && t < 1.5 ? 0.15 * Math.sin(2 * Math.PI * 440 * 2 ** ((midi - 69) / 12) * t) : 0);
+    }
+    const targets = notes.map((n, i) => ({ col: i, t: n.t0, tEnd: n.t1, midi: n.midi, kind: "note", grade: null }));
+    const { p, counted } = fakePractice(targets, "both");
+    const pj = new PitchJudge(p, TIMING), an = new MicAnalyzer(SR);
+    for (let i = 0, k = 0; i + 128 <= x.length; i += 128, k++) { an.push((i + 127) / SR, x.subarray(i, i + 128)); if (k % 8 === 0) pj.update(an); }
+    pj.update(an);
+    pj.tick(4);
+    assert.equal(counted[0].grade, "perfect", `${midi}: ${JSON.stringify(counted[0])}`);
+  }
+});

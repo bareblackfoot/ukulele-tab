@@ -18,7 +18,8 @@ const JUMP = 2;              // semitones a frame may differ from a neighbouring
 const PEAK_FALL = 0.92;      // per frame: how fast the level of what was just played is forgotten (about 0.25 s)
 const LOW_CUT = 250;         // Hz: what is under it is not used to read pitch (the room's hum and rumble)
 const MIN_LEVEL = 0.01;      // a window quieter than this is not read at all (SPRED's own limit)
-const HARM_BELOW = 300;      // Hz: a pitch under this must have harmonics (the room's low noise has none)
+const HARM_BELOW = 300;      // Hz: a pitch under this must have harmonics or be clean (the room's low noise is neither)
+const CLEAN = 0.9;           // YIN clarity of a clean tone
 
 export class PitchJudge {
   // timing: the timing windows of the game modes (TIMING in practice.js)
@@ -96,10 +97,13 @@ export class PitchJudge {
     const { f0, clarity } = yin(x, an.sr, 150, 1400);
     const going = !!this.held && this.held.m !== null;
     if (clarity < (going ? 0.6 : 0.75) || !(f0 > 0)) return null;
-    // a low pitch with no harmonics is the room (a band of low noise, a fan tone, a hum), not the otamatone:
-    // low on the stem the otamatone has 0.3 to 0.9 of its sound there, those under 0.1 (rarely 0.15). High on
-    // the stem its notes are nearly pure (E5 to C6: 0 to 0.15), and the room's noise is not up there.
-    if (f0 < HARM_BELOW && harmonicShare(x, an.sr, f0) < (going ? 0.1 : 0.15)) return null;
+    // A low pitch that is neither clean nor has harmonics is the room (a band of low noise: clarity mostly
+    // under 0.75, harmonics under 0.1), not the otamatone: a buzzy otamatone note has 0.3 to 0.9 of its sound
+    // at harmonics, a mellow one (the mouth shut; this app's own voice from B3 up) almost none but a clarity
+    // near 1. (Harmonics alone threw such notes away: G#3 to D4 played right read as Miss.) High on the stem
+    // the notes are nearly pure (E5 to C6), and the room's low noise is not up there. A steady fan tone, clean
+    // too, becomes the room level after 10 s (below).
+    if (f0 < HARM_BELOW && clarity < CLEAN && harmonicShare(x, an.sr, f0) < (going ? 0.1 : 0.15)) return null;
     const m = 69 + 12 * Math.log2(f0 / 440);
     // a held note keeps the room estimate from climbing to it (then quiet notes were not heard); a pitch that
     // has not moved for 10 s is more likely the room (a fan, a hum) and may become the room level

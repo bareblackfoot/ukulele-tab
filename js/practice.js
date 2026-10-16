@@ -372,14 +372,12 @@ export class Practice {
     this.bursts.push({ t: performance.now(), grade, midi: target.midi });
   }
 
-  // the note the microphone hears now, with how far off it is (cents), a few times a second
+  // the note the microphone hears now (its name), a few times a second
   showHeard() {
     const L = this.pj && this.pj.live;
     if (!L || performance.now() - this.pj.shownAt < 120) return;
     this.pj.shownAt = performance.now();
-    if (L.m === null) { this.ui.heard("--"); return; }
-    const r = Math.round(L.m), c = Math.round((L.m - r) * 100);
-    this.ui.heard(`${pitchName(r)} ${c >= 0 ? "+" : ""}${c}`);
+    this.ui.heard(L.m === null ? "--" : pitchName(Math.round(L.m)));
   }
 
   // while practice mode is on but nothing plays: keep the mic meter and the lane alive

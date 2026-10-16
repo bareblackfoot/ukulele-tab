@@ -9,7 +9,6 @@
 import { computeBars, pitchName, midiOf } from "./model.js";
 import { stemMap, stemOf } from "./instrument.js";
 import { noteFill, noteText, rowFill, trackKind } from "./pitchcolor.js";
-import { PITCH_TOL } from "./pitchgame.js";
 
 const NATURAL = new Set([0, 2, 4, 5, 7, 9, 11]);
 // SPRED's roll and judge colours
@@ -40,25 +39,34 @@ export class PitchLane {
     const c = cv.getContext("2d");
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     const ts = practice.targets, tm = practice.player.tm, spb = s.stepsPerBeat;
-    const k = (Number(this.settings().rollZoom) || 100) / 100;
-    if (this.ref !== ts || this.score !== s || this.k !== k) {
+    if (this.ref !== ts || this.score !== s) {
       this.ref = ts;
       this.score = s;
-      this.k = k;
+      this.k = 0;
       const ms = ts.map((t) => t.midi);
       this.lo = (ms.length ? Math.min(...ms) : 60) - 1;
       this.hi = (ms.length ? Math.max(...ms) : 72) + 1;
       while (this.hi - this.lo < 8) { this.hi++; if (this.hi - this.lo < 8) this.lo--; }
       const stem = stemOf(s);
       this.pos = stemMap(stem);
-      this.rowH = ((stem && stem.row) || 7) * k;
+      this.stemRow = (stem && stem.row) || 7;
       this.bars = computeBars(s);
       // the tracks switched off in 보기: drawn faint, not judged
       this.off = s.tracks.flatMap((t, ti) => (t.muted && !t.hidden ? t.notes.map((n) => ({ col: n.col, len: n.len, midi: midiOf(n, s.tuning, s.capo || 0), tk: trackKind(t, ti) })) : []))
         .sort((a, b) => a.col - b.col);
-      // as tall as the song's notes are apart on the stem, at SPRED's scale (nothing squeezed to fit)
-      this.root.style.height = `${Math.round(Math.max(120, (this.pos(this.hi) - this.pos(this.lo)) * k + 21 * k + 12))}px`;
     }
+    // as tall as the song's notes are apart on the stem at SPRED's scale (보기 → 세로 크기), all of it made
+    // smaller in the same proportions when the song's range would not fit on the screen with the counts and a
+    // little of the sheet below (notes went off the screen)
+    const zoom = (Number(this.settings().rollZoom) || 100) / 100, span = this.pos(this.hi) - this.pos(this.lo);
+    const room = window.innerHeight - this.root.getBoundingClientRect().top - 150;
+    const fitK = Math.max(0.3, Math.min(zoom, (room - 12) / (span + 21)));
+    if (Math.abs(fitK - this.k) > 0.005) {
+      this.k = fitK;
+      this.rowH = this.stemRow * fitK;
+      this.root.style.height = `${Math.round(Math.max(110, span * fitK + 21 * fitK + 12))}px`;
+    }
+    const k = this.k;
     const narrow = W < 560;
     const hitX = narrow ? 64 : 84;
     this.root.parentElement.style.setProperty("--hit", `${hitX}px`);
@@ -202,11 +210,10 @@ export class PitchLane {
         c.lineWidth = 2;
         c.stroke();
         c.restore();
-        // against the note at the hit line when it is within a semitone and a half, else the nearest note
-        let name = pitchName(Math.round(L.m)), cents = Math.round((L.m - Math.round(L.m)) * 100), on = null;
-        const d = atHit ? pj.cents(L.m, atHit.midi) : 1e9;
-        if (Math.abs(d) <= 150) { name = pitchName(atHit.midi); cents = Math.round(d); on = Math.abs(d) <= PITCH_TOL[practice.mode]; }
-        const txt = `${name} ${cents > 0 ? "+" : ""}${cents}`;
+        // the note heard, by name only (no cents: «E4 +12» read badly); green when it counts as the note at the
+        // hit line, orange when it does not, white with no note there
+        const on = atHit ? pj.near(L.m, atHit.midi) : null;
+        const txt = on ? pitchName(atHit.midi) : pitchName(Math.round(L.m));
         c.font = "bold 13px Arial, system-ui, sans-serif";
         c.textAlign = "right";
         c.textBaseline = "middle";
