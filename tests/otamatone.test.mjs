@@ -256,3 +256,19 @@ test("sync from the speaker: the delay measured follows the delay of the sound",
   assert.ok(Math.abs(b - a - 100) <= 12, `${a} ms and ${b} ms`);
   assert.ok(a >= 50 && a <= 110, `${a} ms`);
 });
+
+test("score out of 100: a note played again after going back counts once", async () => {
+  const { Practice } = await import("../js/practice.js");
+  const ui = { onMark() {}, counts() {}, heard() {}, clearMarks() {}, status() {} };
+  const p = new Practice({}, { tm: null, playing: false }, ui);
+  p.targets = Array.from({ length: 10 }, (_, i) => ({ col: i * 4, len: 4, kind: "note", midi: 60, grade: null }));
+  for (const g of p.targets.slice(0, 5)) p.count(g, "perfect", 0, "perfect");
+  assert.equal(p.stats.score, 50);
+  p.rewind(0);                              // back to the start, as a seek does
+  assert.equal(p.stats.score, 0);
+  for (const g of p.targets.slice(0, 5)) p.count(g, "perfect", 0, "perfect");
+  assert.equal(p.stats.score, 50);          // summed judgement by judgement it was 100 here
+  for (const g of p.targets.slice(5)) p.count(g, "ok", 0, "ok");
+  assert.equal(p.stats.score, Math.round(10000 * (5 + 5 * 2 / 3) / 10) / 100);
+  assert.equal(p.result().score, p.stats.score);
+});

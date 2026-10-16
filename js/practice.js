@@ -145,6 +145,7 @@ export class Practice {
     }
     this.pending = [];
     if (this.pj) this.pj.rewind();
+    this.stats.score = this.points();
   }
 
   // ---------------------------------------------------------------- start / stop
@@ -455,10 +456,14 @@ export class Practice {
   }
 
   // the score so far out of 100 (records.js pointsOf): every note of the song weighs the same, so it climbs
-  // from 0 to the final score as the song goes; two players at the same place in the song compare directly
+  // from 0 to the final score as the song goes; two players at the same place in the song compare directly.
+  // It is taken from each note's grade as it stands: a note played again after going back (a seek, a loop)
+  // counts once, with its newest grade. (Summed judgement by judgement, going back and playing on reached
+  // 100 halfway through the song.)
   points() {
-    const n = Math.max(1, this.targets.length);
-    return Math.min(100, Math.round((10000 * this.stats.accSum) / n) / 100);
+    let sum = 0;
+    for (const t of this.targets) if (t.grade && t.grade !== "pending") sum += ACC[t.grade];
+    return Math.min(100, Math.round((10000 * sum) / Math.max(1, this.targets.length)) / 100);
   }
 
   result() {
