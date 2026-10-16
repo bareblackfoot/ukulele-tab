@@ -129,6 +129,7 @@ export class MicAnalyzer {
     this.flux = [];
     this.onsets = [];        // {t (audio clock, uncorrected), strength, f (spectral flux)}
     this.lastOnsetT = -1;
+    this.toneT = -1;         // when a held pitch was last heard (otamatone game): that sound is not the room
     this.level = 0;
     this.noise = 0.002;      // level of the room when nothing is played
     this.onsetLevel = 0;     // typical level right after a strum (running average)
@@ -158,9 +159,10 @@ export class MicAnalyzer {
     this.level = rms(block);
     // The room level falls quickly and rises slowly, and only after 0.6 s without a strum: while someone keeps
     // strumming, the ringing strings are not the room. (It used to rise during playing too, so after a minute
-    // or so of strumming it reached the playing level and every strum was rejected.)
+    // or so of strumming it reached the playing level and every strum was rejected.) A note held on the
+    // otamatone has no new attack, so a pitch heard counts the same way (toneT).
     if (this.level < this.noise) this.noise = 0.9 * this.noise + 0.1 * this.level;
-    else if (t - this.lastOnsetT > 0.6) this.noise = Math.min(this.noise * 1.002, 0.99 * this.noise + 0.01 * this.level);
+    else if (t - Math.max(this.lastOnsetT, this.toneT) > 0.6) this.noise = Math.min(this.noise * 1.002, 0.99 * this.noise + 0.01 * this.level);
     if (this.onsetLevel) this.noise = Math.min(this.noise, this.onsetLevel / 10);
     this.noise = Math.max(this.noise, 1e-5);
     this.detect();

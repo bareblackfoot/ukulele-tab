@@ -156,3 +156,45 @@ test("rows as far apart as the notes are on the stem: the sheet's own SPRED layo
   assert.ok(q(53) - q(52) > 3 * (q(85) - q(84)));
   for (let m = 52; m < 85; m++) assert.ok(q(m + 1) > q(m));
 });
+
+// the pitch the lane shows (pj.live) for a sound given by amp(t) and midi(t) over room noise (hiss and rumble): a saw wave
+// through a soft low-pass, smooth like the otamatone, so a held note gives no new attacks
+function heard(secs, amp, midi) {
+  const p = { mode: "std", judgeKind: "both", offsetMs: 0, targets: [], player: { playing: false, rate: 1 }, scoreTimeOf: (t) => t };
+  const pj = new PitchJudge(p, TIMING), an = new MicAnalyzer(SR);
+  const x = new Float32Array(Math.ceil(secs * SR));
+  let phase = 0, lp = 0, rumble = 0, seed = 3;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+  for (let i = 0; i < x.length; i++) {
+    const t = i / SR, a = amp(t);
+    rumble = 0.995 * rumble + rnd() * 0.02;
+    x[i] = rnd() * 0.0015 + rumble * 0.012;
+    if (a <= 0) continue;
+    phase = (phase + 440 * 2 ** ((midi(t) - 69) / 12) / SR) % 1;
+    lp += 0.25 * (2 * phase - 1 - lp);
+    x[i] += a * lp;
+  }
+  const out = [];
+  for (let i = 0, k = 0; i + 128 <= x.length; i += 128, k++) {
+    an.push((i + 127) / SR, x.subarray(i, i + 128));
+    if (k % 8 === 0) { pj.update(an); out.push({ t: i / SR, m: pj.live ? pj.live.m : null }); }
+  }
+  return out;
+}
+
+test("a quiet note held for seconds stays heard (the room estimate does not climb to it)", () => {
+  // a loud note, a short rest, then a note 26 dB quieter started softly (few attacks heard) and held
+  const fr = heard(9, (t) => (t > 0.5 && t < 1.5 ? 0.3 : t > 1.7 ? 0.015 * Math.min(1, (t - 1.7) / 0.3) : 0), () => 64)
+    .filter((f) => f.t > 2.1);
+  const on = fr.filter((f) => f.m !== null && Math.abs(f.m - 64) < 0.3).length;
+  assert.ok(on / fr.length > 0.95, `${on} of ${fr.length}`);
+});
+
+test("letting go of the stem: the slide down and the quiet tail do not show as a low note", () => {
+  // G4 held, then in the last 40 ms the finger lifts: the pitch dives an octave while the sound dies away
+  const end = 1.5, fr = heard(2.5, (t) => (t < end - 0.04 ? 0.3 : t < end ? 0.3 * ((end - t) / 0.04) ** 2 : 0),
+    (t) => (t < end - 0.04 ? 67 : 67 - 12 * (t - (end - 0.04)) / 0.04));
+  const low = fr.filter((f) => f.m !== null && f.m < 64);
+  assert.deepEqual(low, []);
+  assert.ok(fr.filter((f) => f.t > 0.6 && f.t < 1.4).every((f) => f.m !== null && Math.abs(f.m - 67) < 0.3));
+});

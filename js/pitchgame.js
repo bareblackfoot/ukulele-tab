@@ -14,6 +14,8 @@ export const PITCH_TOL = { easy: 120, std: 80, pro: 50 }; // cents from the note
 export const JUDGE_KINDS = { both: "시작 박자 + 음 유지", start: "시작 박자만", hold: "음 유지만" };
 const ACC = { perfect: 1, ok: 2 / 3, bad: 1 / 3, miss: 0 };
 const FRAME = 2048, HOP = 0.02;
+const JUMP = 2;              // semitones a frame may differ from a neighbouring frame (a slide is about this fast)
+const PEAK_FALL = 0.92;      // per frame: how fast the level of what was just played is forgotten (about 0.25 s)
 
 export class PitchJudge {
   // timing: the timing windows of the game modes (TIMING in practice.js)
@@ -29,6 +31,9 @@ export class PitchJudge {
     this.trail = [];     // {st: score time, m: MIDI (fractional) or null} heard while playing
     this.live = null;    // {m, at} the latest pitch, also while stopped
     this.shownAt = 0;
+    this.held = null;    // {mid, m} the newest frame, passed on when the next one shows whether it stands alone
+    this.before = null;  // the pitch of the frame passed on last
+    this.peak = 0;       // level of what was just played
   }
 
   get kind() { return this.p.judgeKind; }
@@ -41,29 +46,53 @@ export class PitchJudge {
 
   near(m, midi) { return Math.abs(this.cents(m, midi)) <= PITCH_TOL[this.p.mode]; }
 
-  // every animation frame: pitch of the new microphone sound, 50 frames a second
+  // every animation frame: pitch of the new microphone sound, 50 frames a second, each frame passed on one
+  // frame late (20 ms) so a pitch heard in one frame alone can be dropped
   update(an) {
-    const p = this.p, pl = p.player;
     const dur = FRAME / an.sr;
-    if (this.nextT === null || this.nextT < an.lastT - 1) this.nextT = an.lastT - dur;
+    if (this.nextT === null || this.nextT < an.lastT - 1) { this.nextT = an.lastT - dur; this.held = null; this.before = null; }
     while (this.nextT + dur <= an.lastT) {
       const x = an.window(this.nextT, FRAME);
       const mid = this.nextT + dur / 2;
       this.nextT += HOP;
-      let m = null;
-      if (x && rms(x) > Math.max(an.noise * 4, 0.003)) {
-        const { f0, clarity } = yin(x, an.sr, 130, 1400);
-        if (clarity > 0.6 && f0 > 0) m = 69 + 12 * Math.log2(f0 / 440);
-      }
-      this.live = { m, at: performance.now() };
-      if (!pl.playing) continue;
-      const tc = mid - p.offsetMs / 1000; // when it was played: the microphone delay taken off
-      if (tc < pl.startCtx) continue;
-      const st = p.scoreTimeOf(tc);
-      this.trail.push({ st, m });
-      this.feed(st, m);
+      const m = this.pitchOf(x, an, mid);
+      // a frame far from the frames on both sides of it is a wrong reading (the period found twice over in
+      // a quiet frame, the slide of a finger lifting off the stem), not a note: the dot jumped to the bottom
+      // of the lane and back
+      const prev = this.held;
+      this.held = { mid, m };
+      if (!prev) continue;
+      const v = prev.m, near = (a) => a !== null && Math.abs(a - v) <= JUMP;
+      this.take(prev.mid, v !== null && (near(this.before) || near(m)) ? v : null);
+      this.before = v;
     }
     if (this.trail.length > 500) this.trail.splice(0, this.trail.length - 500);
+  }
+
+  // the pitch in one window (MIDI, fractional), or null for the room, a sound much quieter than what was just
+  // played (a finger letting go) or a sound with no clear pitch
+  pitchOf(x, an, t) {
+    if (!x) return null;
+    const lv = rms(x);
+    this.peak = Math.max(lv, (this.peak || 0) * PEAK_FALL);
+    if (lv < Math.max(an.noise * 4, 0.002) || lv < this.peak / 8) return null;
+    // a sound starting from quiet must be clearly pitched (talking, music in the room); going on from a pitch,
+    // less so (a window half one note, half the next)
+    const { f0, clarity } = yin(x, an.sr, 150, 1400);
+    if (clarity < (this.held && this.held.m !== null ? 0.6 : 0.75) || !(f0 > 0)) return null;
+    an.toneT = t; // a held note keeps the room estimate from climbing to it (then quiet notes were not heard)
+    return 69 + 12 * Math.log2(f0 / 440);
+  }
+
+  take(mid, m) {
+    const p = this.p, pl = p.player;
+    this.live = { m, at: performance.now() };
+    if (!pl.playing) return;
+    const tc = mid - p.offsetMs / 1000; // when it was played: the microphone delay taken off
+    if (tc < pl.startCtx) return;
+    const st = p.scoreTimeOf(tc);
+    this.trail.push({ st, m });
+    this.feed(st, m);
   }
 
   feed(st, m) {
@@ -146,5 +175,7 @@ export class PitchJudge {
     this.open = 0;
     this.trail = [];
     this.nextT = null;
+    this.held = null;
+    this.before = null;
   }
 }
