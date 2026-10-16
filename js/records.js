@@ -55,12 +55,14 @@ export const records = {
     await post("/auth/pin", { session: s.session, oldPin, newPin });
   },
 
-  // keep a result; returns the previous best score for the same song and judging setup (or null)
+  // keep a result; returns the previous best score (out of 100) for the same song, judging setup and speed
+  // (or null): scores are compared only like for like, as rhythm games rank each chart and difficulty apart
   add(r) {
     r = { ...r, inst: INST.id };
     const all = this.local();
-    const same = all.filter((x) => x.song === r.song && x.target === r.target && x.mode === r.mode && (x.judge || "") === (r.judge || ""));
-    const prevBest = same.length ? Math.max(...same.map((x) => x.score)) : null;
+    const same = all.filter((x) => x.song === r.song && x.target === r.target && x.mode === r.mode && (x.judge || "") === (r.judge || "")
+      && (x.rate || 1) === (r.rate || 1));
+    const prevBest = same.length ? Math.max(...same.map(pointsOf)) : null;
     all.push(r);
     store.set(LOCAL, all.slice(-2000));
     const pending = store.get(PENDING, []);
@@ -99,6 +101,18 @@ export const records = {
   },
 };
 
-export function rankOf(acc) {
-  return acc >= 95 ? "S" : acc >= 85 ? "A" : acc >= 70 ? "B" : acc >= 50 ? "C" : "D";
+export function rankOf(pts) {
+  return pts >= 95 ? "S" : pts >= 85 ? "A" : pts >= 70 ? "B" : pts >= 50 ? "C" : "D";
 }
+
+// The score out of 100, the way rhythm games score a chart for ranking (osu!mania's accuracy, IIDX's EX score,
+// SOUND VOLTEX's 10,000,000): each note of the song weighs the same, Perfect 1, Ok 2/3, Bad 1/3, Miss 0, and
+// notes never played count 0, so a song stopped halfway cannot beat one played through. Results saved before
+// it (an unbounded sum) get it from their accuracy and the share of notes judged.
+export function pointsOf(r) {
+  if (r.pts !== undefined && r.pts !== null) return r.pts;
+  const share = r.total ? Math.min(1, (r.n || 0) / r.total) : 1;
+  return Math.round((r.acc || 0) * share * 100) / 100;
+}
+
+export const pointsText = (v) => (Math.round(v * 10) / 10).toFixed(1);

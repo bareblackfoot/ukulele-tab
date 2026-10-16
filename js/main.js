@@ -13,7 +13,7 @@ import { YouTubeSync, parseVideoId } from "./youtube.js";
 import { bridge, bridgeSettings, saveBridgeSettings, connectBridge, isRemote } from "./bridge.js";
 import { Practice, calibrate } from "./practice.js";
 import { alignLyrics } from "./lyrics.js";
-import { records, rankOf } from "./records.js";
+import { records, rankOf, pointsText } from "./records.js";
 import { Dashboard } from "./dashboard.js";
 import { songKey } from "./drills.js";
 import { DrillView } from "./drillview.js";
@@ -82,6 +82,7 @@ const practice = new Practice(engine, player, {
   status,
   syncControls: () => syncPracticeControls(),
   counts: (st) => {
+    $(".g-score b").textContent = pointsText(st.score);
     for (const el of $$(".g-counts [data-c]")) {
       const k = el.dataset.c;
       el.textContent = k === "acc" || k === "tacc" || k === "hold" ? `${st[k]}%` : k === "davg" ? lateText(st.davg)
@@ -231,7 +232,9 @@ function setScore(s, { keepHistory = false, msg } = {}) {
 // where the open score came from, so a later visit opens the newest version of an example or my-library sheet
 // instead of this browser's old copy (unless it was edited here)
 const SRC = skey("lastSource");
-function rememberSource(kind, file) { store.set(SRC, kind ? { kind, file, edited: false } : null); }
+function rememberSource(kind, file) { store.set(SRC, kind ? { kind, file, edited: false } : null); drawSongbar(); }
+// the song list on the left: examples, and my library's items (null when this login has none)
+const songbar = { examples: [], mine: null };
 
 function mutate(fn, label = "편집") {
   const before = JSON.stringify(score);
@@ -518,7 +521,8 @@ const actions = {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   },
   print: () => { const prev = settings.follow; window.print(); settings.follow = prev; },
-  examples: () => openExamples(),
+  examples: () => showSongbar(true),
+  songbar: () => showSongbar(!document.body.classList.contains("songbar-open")),
   "save-lib": () => saveToLibrary(),
   records: () => setView(view === "records" ? "sheet" : "records"),
   account: async () => {
@@ -709,7 +713,7 @@ function showResult() {
   if (!r.n) return;
   const rec = {
     time: Date.now(), song: songKey(score), title: score.meta.title || "제목 없음", artist: score.meta.artist || "",
-    mode: r.mode, target: r.target, rate: player.rate, score: r.score, acc: r.acc, tacc: r.tacc, maxCombo: r.maxCombo,
+    mode: r.mode, target: r.target, rate: player.rate, score: r.score, pts: r.score, acc: r.acc, tacc: r.tacc, maxCombo: r.maxCombo,
     perfect: r.perfect, ok: r.ok, bad: r.bad, miss: r.miss, early: r.early, late: r.late, n: r.n, total: r.total, fullCombo: r.fullCombo,
     ...(r.judge ? { judge: r.judge, hold: r.hold } : {}),
   };
@@ -717,15 +721,16 @@ function showResult() {
   const dlg = $(".dlg-gresult");
   const modeName = { easy: "쉬움", std: "보통", pro: "어려움" }[r.mode];
   const targetName = r.judge ? JUDGE_KINDS[r.judge] : { beat: "코드 박마다", change: "코드 바뀔 때", pattern: "스트럼 패턴", melody: "멜로디" }[r.target];
-  const rank = rankOf(r.acc);
-  const best = prevBest === null ? "" : r.score > prevBest ? `<span class="gr-best">최고 기록! +${r.score - prevBest}</span>` : `<span class="hint">최고 ${prevBest}점</span>`;
+  const rank = rankOf(r.score);
+  const best = prevBest === null ? "" : r.score > prevBest ? `<span class="gr-best">최고 기록! +${pointsText(r.score - prevBest)}</span>`
+    : `<span class="hint">같은 난이도·판정·속도 최고 ${pointsText(prevBest)}점</span>`;
   dlg.querySelector(".gr-meta").innerHTML = `<span class="gr-rank ${rank}">${rank}</span>${escHtml(score.meta.title || "제목 없음")} · ${modeName} · ${targetName}` +
     (r.fullCombo ? `<span class="gr-badge">FULL COMBO</span>` : "") + best +
     (records.session() ? "" : ` <span class="hint">이 브라우저에만 저장됨. 로그인하면 계정에 올라감</span>`);
   const cell = (label, v, cls = "") => `<div><small>${label}</small><b class="${cls}">${v}</b></div>`;
   dlg.querySelector(".gr-grid").innerHTML = [
-    cell("정확도", `${r.acc}%`), r.judge === "hold" ? "" : cell("타이밍 정확도", `${r.tacc}%`),
-    r.hold === null || r.hold === undefined ? "" : cell("음 유지", `${r.hold}%`), cell("점수", r.score), cell("최대 콤보", r.maxCombo),
+    cell("점수 (100점 만점)", pointsText(r.score), "pts"), cell("정확도", `${r.acc}%`), r.judge === "hold" ? "" : cell("타이밍 정확도", `${r.tacc}%`),
+    r.hold === null || r.hold === undefined ? "" : cell("음 유지", `${r.hold}%`), cell("최대 콤보", r.maxCombo),
     cell("Perfect", r.perfect, "perfect"), cell("Ok", r.ok, "ok"), cell("Bad", r.bad, "bad"), cell("Miss", r.miss, "miss"),
     cell("빠름 (EARLY)", r.early), cell("늦음 (LATE)", r.late), cell("판정한 수", `${r.n}/${r.total}`),
     r.davg === null ? "" : cell("시작 박자 평균 (ms)", lateText(r.davg, "")), r.cavg === null || r.cavg === undefined ? "" : cell("음높이 평균 (cent)", highText(r.cavg, "")),
@@ -916,63 +921,67 @@ $(".file-input").addEventListener("change", async (e) => {
 const escHtml = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 let libraryFile = null; // file name in my library of the score that is open, so saving writes back to it
 
-async function openExamples() {
-  const dlg = $(".dlg-examples");
-  const list = dlg.querySelector(".ex-public");
-  const mine = dlg.querySelector(".lib-list");
-  list.textContent = "";
-  mine.textContent = "";
-  dlg.showModal();
-  const filter = dlg.querySelector(".lib-filter");
-  const sess = records.session();
-  // my library is only for the owner account; everyone else does not see the section at all
-  dlg.querySelectorAll(".lib-part").forEach((el) => { el.hidden = true; });
-  try {
-    if (!sess) throw Object.assign(new Error("로그인 안 함"), { status: 403 });
-    const { items } = await bridge.library(sess.session);
-    dlg.querySelectorAll(".lib-part").forEach((el) => { el.hidden = false; });
-    const draw = () => {
-      const q = filter.value.trim().toLowerCase();
-      mine.innerHTML = "";
-      for (const it of items.filter((x) => !q || `${x.title} ${x.artist}`.toLowerCase().includes(q))) {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.innerHTML = `<b>${escHtml(it.title)}</b> <small>${escHtml(it.artist)}${it.capo ? ` · 카포 ${it.capo}` : ""}${it.key ? ` · ${escHtml(it.key)}` : ""}</small>`;
-        b.addEventListener("click", async () => {
-          dlg.close();
-          try {
-            const obj = await bridge.libraryGet(it.file, sess.session);
-            setScore(loadAnyFormat(obj));
-            libraryFile = it.file;
-            rememberSource("library", it.file);
-            seek(0);
-          } catch (err) { status(`악보를 못 엶: ${err.message}`, true); }
-        });
-        mine.appendChild(b);
-      }
-      if (!mine.children.length) mine.textContent = items.length ? "맞는 곡 없음" : "아직 없음";
-    };
-    filter.oninput = draw;
-    draw();
-  } catch (err) {
-    if (err.status !== 403) {
-      dlg.querySelectorAll(".lib-part").forEach((el) => { el.hidden = false; });
-      mine.textContent = `내 PC에 연결되지 않아 못 불러옴 (${err.message})`;
-    }
-  }
-  try {
-    const items = await (await fetch("examples/manifest.json")).json();
-    for (const it of items) {
+// ---------------------------------------------------------------- song list on the left
+// The examples and (for the owner account) my library stay at hand on the left: a song opens with one click.
+// The 악보 button folds the list away (remembered in this browser); on a narrow screen it lies over the page
+// and folds after a pick.
+const SONGBAR = skey("songbar");
+const narrowScreen = () => window.innerWidth < 1000;
+
+function showSongbar(open, { quiet = false } = {}) {
+  document.body.classList.toggle("songbar-open", open);
+  $$("[data-act=songbar]").forEach((b) => b.setAttribute("aria-pressed", String(open)));
+  store.set(SONGBAR, open);
+  if (open) drawSongbar();
+  if (!quiet && !narrowScreen()) window.dispatchEvent(new Event("resize")); // the sheet gets narrower or wider
+}
+
+function drawSongbar() {
+  const filter = $(".sb-filter");
+  if (!filter) return;
+  const q = filter.value.trim().toLowerCase();
+  const src = store.get(SRC, null);
+  const fill = (box, items, kind) => {
+    box.textContent = "";
+    for (const it of items.filter((x) => !q || `${x.title} ${x.artist || ""} ${x.note || ""}`.toLowerCase().includes(q))) {
       const b = document.createElement("button");
       b.type = "button";
-      b.innerHTML = `<b>${escHtml(it.title)}</b> <small>${escHtml(it.note || "")}</small>`;
-      b.addEventListener("click", async () => { dlg.close(); await loadExample(it.file); });
-      list.appendChild(b);
+      const sub = kind === "library" ? `${it.artist || ""}${it.capo ? ` · 카포 ${it.capo}` : ""}` : it.note || "";
+      b.innerHTML = `<b>${escHtml(it.title)}</b>${sub ? `<small>${escHtml(sub)}</small>` : ""}`;
+      b.title = sub ? `${it.title} · ${sub}` : it.title;
+      if (src && src.kind === kind && src.file === it.file) b.setAttribute("aria-current", "true");
+      b.addEventListener("click", () => openSong(kind, it));
+      box.appendChild(b);
     }
-  } catch (err) {
-    list.textContent = `예제 목록을 못 불러옴: ${err.message}`;
+    if (!box.children.length) box.textContent = items.length ? "맞는 곡 없음" : "아직 없음";
+  };
+  // my library is only for the owner account; everyone else does not see the section at all
+  $$(".sb-mine-part").forEach((el) => { el.hidden = !songbar.mine; });
+  if (songbar.mine) {
+    fill($(".sb-mine"), songbar.mine, "library");
+    $(".sb-count").textContent = `${songbar.mine.length}곡`;
   }
+  fill($(".sb-examples"), songbar.examples, "example");
+  const cur = $(".sb-list [aria-current=true]");
+  if (cur) cur.scrollIntoView({ block: "nearest" });
 }
+
+async function openSong(kind, it) {
+  if (narrowScreen()) showSongbar(false);
+  try {
+    if (kind === "example") { await loadExample(it.file); return; }
+    const sess = records.session();
+    setScore(loadAnyFormat(await bridge.libraryGet(it.file, sess && sess.session)));
+    libraryFile = it.file;
+    rememberSource("library", it.file);
+    seek(0);
+  } catch (err) { status(`악보를 못 엶: ${err.message}`, true); }
+}
+
+$(".sb-filter").addEventListener("input", drawSongbar);
+fetch("examples/manifest.json").then((r) => r.json()).then((items) => { songbar.examples = items; drawSongbar(); })
+  .catch((err) => { $(".sb-examples").textContent = `예제 목록을 못 불러옴: ${err.message}`; });
+showSongbar(store.get(SONGBAR, !narrowScreen()), { quiet: true });
 
 function syncAccount() {
   const s = records.session();
@@ -982,10 +991,14 @@ function syncAccount() {
   // my library is for the owner account only; ask the bridge whether this login may use it
   $("[data-act=save-lib]").hidden = true;
   $("[data-act=examples]").textContent = "예제";
+  songbar.mine = null;
+  drawSongbar();
   if (s) {
-    bridge.library(s.session).then(() => {
+    bridge.library(s.session).then(({ items }) => {
       $("[data-act=save-lib]").hidden = false;
       $("[data-act=examples]").textContent = "예제·내 악보";
+      songbar.mine = items;
+      drawSongbar();
     }).catch(() => {});
   }
 }
@@ -1135,6 +1148,8 @@ async function saveToLibrary() {
     if (!sess) throw new Error("내 악보함은 주인 아이디로 로그인해야 쓸 수 있음");
     await bridge.librarySave(file, JSON.parse(toJSON(score)), sess.session);
     libraryFile = file;
+    rememberSource("library", file);
+    bridge.library(sess.session).then(({ items }) => { songbar.mine = items; drawSongbar(); }).catch(() => {});
   } catch (err) {
     status(`저장 못 함: ${err.message}`, true);
   }

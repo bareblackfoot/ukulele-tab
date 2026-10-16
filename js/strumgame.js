@@ -3,7 +3,7 @@
 // microphone (strum onsets) or taps / keys. At the end a result card, saved with the other game records.
 
 import { TIMING } from "./practice.js";
-import { records, rankOf } from "./records.js";
+import { records, rankOf, pointsText } from "./records.js";
 
 const ACC = { perfect: 1, ok: 2 / 3, bad: 1 / 3, miss: 0 };
 const LABEL = { perfect: "PERFECT", ok: "OK", bad: "BAD", miss: "MISS" };
@@ -120,7 +120,7 @@ export class StrumGame {
     const breaks = this.mode === "pro" ? grade === "bad" || grade === "miss" : grade === "miss";
     st.combo = breaks ? 0 : st.combo + 1;
     st.maxCombo = Math.max(st.maxCombo, st.combo);
-    st.score += Math.round(100 * ACC[grade]);
+    st.score = Math.min(100, Math.round((10000 * st.accSum) / Math.max(1, this.targets.length)) / 100); // out of 100, as records.js pointsOf
     this.flash = { grade, sub: grade !== "miss" && grade !== "perfect" ? (d < 0 ? "EARLY" : "LATE") : "", t: performance.now(), combo: st.combo };
     if (st.combo && (st.combo === 10 || st.combo === 20 || st.combo === 30 || st.combo % 50 === 0)) this.milestone = { n: st.combo, t: performance.now() };
     this.ui.mark(g.bar, g.i, grade);
@@ -198,7 +198,7 @@ export function showStrumResult(game, info, onAgain) {
   const target = `${info.bpm} BPM · ${info.bars}마디${game.input === "keys" ? " · 탭" : ""}`;
   const rec = {
     time: Date.now(), song: `strum.${info.pattern.id}`, title: `스트럼: ${info.pattern.name}`, artist: "스트럼 연습",
-    mode: game.mode, target, rate: 1, score: r.score, acc: r.acc, tacc: r.tacc, maxCombo: r.maxCombo,
+    mode: game.mode, target, rate: 1, score: r.score, pts: r.score, acc: r.acc, tacc: r.tacc, maxCombo: r.maxCombo,
     perfect: r.perfect, ok: r.ok, bad: r.bad, miss: r.miss, early: r.early, late: r.late, n: r.n, total: r.total, fullCombo: r.fullCombo,
   };
   const prevBest = records.add(rec);
@@ -212,15 +212,15 @@ export function showStrumResult(game, info, onAgain) {
     dlg.querySelector("[data-sg=again]").addEventListener("click", () => { dlg.close(); if (dlg.onAgain) dlg.onAgain(); });
   }
   dlg.onAgain = onAgain;
-  const rank = rankOf(r.acc);
-  const best = prevBest === null ? "" : r.score > prevBest ? `<span class="gr-best">최고 기록! +${r.score - prevBest}</span>`
-    : `<span class="hint">같은 패턴·빠르기·길이 최고 ${prevBest}점</span>`;
+  const rank = rankOf(r.score);
+  const best = prevBest === null ? "" : r.score > prevBest ? `<span class="gr-best">최고 기록! +${pointsText(r.score - prevBest)}</span>`
+    : `<span class="hint">같은 패턴·빠르기·길이 최고 ${pointsText(prevBest)}점</span>`;
   dlg.querySelector(".gr-meta").innerHTML = `<span class="gr-rank ${rank}">${rank}</span>${esc(info.pattern.name)} · ${target} · ${MODE_NAME[game.mode]} · ${esc(info.chords)}` +
     (r.fullCombo ? `<span class="gr-badge">FULL COMBO</span>` : "") + best +
     (records.session() ? "" : ` <span class="hint">이 브라우저에만 저장됨. 로그인하면 계정에 올라감</span>`);
   const cell = (label, v, cls = "") => `<div><small>${label}</small><b class="${cls}">${v}</b></div>`;
   dlg.querySelector(".gr-grid").innerHTML = [
-    cell("정확도", `${r.acc}%`), cell("점수", r.score), cell("최대 콤보", r.maxCombo), cell("판정한 수", `${r.n}/${r.total}`),
+    cell("점수 (100점 만점)", pointsText(r.score)), cell("정확도", `${r.acc}%`), cell("최대 콤보", r.maxCombo), cell("판정한 수", `${r.n}/${r.total}`),
     cell("Perfect", r.perfect, "perfect"), cell("Ok", r.ok, "ok"), cell("Bad", r.bad, "bad"), cell("Miss", r.miss, "miss"),
     cell("빠름 (EARLY)", r.early), cell("늦음 (LATE)", r.late),
   ].join("");

@@ -353,7 +353,7 @@ export class Practice {
     const breaks = this.mode === "pro" ? grade === "bad" || grade === "miss" : grade === "miss";
     st.combo = breaks ? 0 : st.combo + 1;
     st.maxCombo = Math.max(st.maxCombo, st.combo);
-    st.score += Math.round(100 * ACC[grade]);
+    st.score = this.points();
     if (flash) {
       this.flash = { grade, text: LABEL[grade], sub: tg && tg !== "perfect" && grade !== "miss" && dMs !== null ? (dMs < 0 ? "EARLY" : "LATE") : "", t: performance.now(), combo: st.combo, midi: target.midi, dMs };
       this.bursts.push({ t: performance.now(), grade, midi: target.midi });
@@ -454,11 +454,19 @@ export class Practice {
     return { davg: st.dN ? Math.round(st.dSum / st.dN) : null, dN: st.dN, cavg: st.centN ? Math.round(st.centSum / st.centN) : null };
   }
 
+  // the score so far out of 100 (records.js pointsOf): every note of the song weighs the same, so it climbs
+  // from 0 to the final score as the song goes; two players at the same place in the song compare directly
+  points() {
+    const n = Math.max(1, this.targets.length);
+    return Math.min(100, Math.round((10000 * this.stats.accSum) / n) / 100);
+  }
+
   result() {
     const st = this.stats;
     const total = this.targets.length;
     return {
       ...st,
+      score: this.points(),
       total,
       acc: st.n ? Math.round((st.accSum / st.n) * 1000) / 10 : 0,
       tacc: st.timeN ? Math.round((st.timeAccSum / st.timeN) * 1000) / 10 : 0,

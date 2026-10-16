@@ -11,6 +11,7 @@ import { songChords } from "./drills.js";
 import { diagramSVG } from "./diagram.js";
 import { chordShape, powerChord } from "./chords.js";
 import { INST, tuningOf, instOf, skey } from "./instrument.js";
+import { pointsText } from "./records.js";
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const store = {
@@ -135,7 +136,7 @@ export class StrumView {
     const counts = game ? `<div class="g-counts sv-counts">
             <span class="perfect">Perfect <b data-c="perfect">${st ? st.perfect : 0}</b></span><span class="ok">Ok <b data-c="ok">${st ? st.ok : 0}</b></span>
             <span class="bad">Bad <b data-c="bad">${st ? st.bad : 0}</b></span><span class="miss">Miss <b data-c="miss">${st ? st.miss : 0}</b></span>
-            <span>콤보 <b data-c="combo">${st ? st.combo : 0}</b></span><span>점수 <b data-c="score">${st ? st.score : 0}</b></span></div>` : "";
+            <span>콤보 <b data-c="combo">${st ? st.combo : 0}</b></span><span>점수 <b data-c="score">${pointsText(st ? st.score : 0)}</b></span></div>` : "";
     this.root.innerHTML = `
       <div class="dr-head"><h2>스트럼 연습</h2><span class="sub">${p.beats === 2 && p.sub === 3 ? "6/8" : `${p.beats}/4`}${p.swing ? " · shuffle" : ""}</span></div>
       <div class="sv-layout">
@@ -236,7 +237,7 @@ export class StrumView {
           const st = r.game.stats;
           for (const k of ["perfect", "ok", "bad", "miss", "combo", "score"]) {
             const el = this.root.querySelector(`.sv-counts [data-c=${k}]`);
-            if (el) el.textContent = String(st[k]);
+            if (el) el.textContent = k === "score" ? pointsText(st[k]) : String(st[k]);
           }
         },
       };

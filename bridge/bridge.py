@@ -345,7 +345,7 @@ def acc_change_pin(tok, old, new):
 
 
 RESULT_FIELDS = ["time", "song", "title", "artist", "mode", "target", "rate", "score", "acc", "tacc", "maxCombo",
-                 "perfect", "ok", "bad", "miss", "early", "late", "n", "total", "fullCombo", "inst", "judge", "hold"]
+                 "perfect", "ok", "bad", "miss", "early", "late", "n", "total", "fullCombo", "inst", "judge", "hold", "pts"]
 
 
 def rec_save(tok, results):

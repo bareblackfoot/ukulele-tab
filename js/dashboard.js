@@ -1,6 +1,6 @@
 // "기록" view: game results per song, best score, how it changed over time.
 
-import { records, rankOf } from "./records.js";
+import { records, rankOf, pointsOf, pointsText } from "./records.js";
 import { JUDGE_KINDS } from "./pitchgame.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -59,13 +59,13 @@ export class Dashboard {
     ].map(([k, v]) => `<div class="db-tile"><small>${k}</small><b>${v}</b></div>`).join("");
     const rows = [...songs.values()].sort((a, b) => b.plays[b.plays.length - 1].time - a.plays[a.plays.length - 1].time).map((g) => {
       const p = g.plays;
-      const top = p.reduce((a, b) => (b.score > a.score ? b : a));
+      const top = p.reduce((a, b) => (pointsOf(b) > pointsOf(a) ? b : a));
       const first = p[0], last = p[p.length - 1];
       const delta = top.acc - first.acc;
       return `<tr data-song="${esc(g.song)}" tabindex="0">
         <td><b>${esc(g.title)}</b><small>${esc(g.artist)}</small></td>
         <td class="num">${p.length}</td>
-        <td class="num"><span class="rk ${rankOf(top.acc)}">${rankOf(top.acc)}</span> ${top.score}점 · ${top.acc}%</td>
+        <td class="num"><span class="rk ${rankOf(pointsOf(top))}">${rankOf(pointsOf(top))}</span> ${pointsText(pointsOf(top))}점 · ${top.acc}%</td>
         <td class="num">${p.length > 1 ? `${first.acc}% → ${top.acc}% <span class="${delta > 0 ? "up" : ""}">${delta > 0 ? "+" : ""}${Math.round(delta * 10) / 10}</span>` : "한 번"}</td>
         <td class="num">${day(last.time)}</td>
         <td>${this.spark(p.map((x) => x.acc))}</td></tr>`;
@@ -96,7 +96,7 @@ export class Dashboard {
     const axis = `<text class="gt" x="${L}" y="${H - 8}">${day(p[0].time)}</text><text class="gt" x="${W - R}" y="${H - 8}" text-anchor="end">${day(p[p.length - 1].time)}</text>`;
     const table = p.slice().reverse().map((r) => `<tr><td>${new Date(r.time).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}</td>
       <td>${esc(r.judge ? JUDGE_KINDS[r.judge] || r.judge : TARGET[r.target] || r.target)} · ${esc(MODE[r.mode] || r.mode)}${r.rate && r.rate !== 1 ? ` · ${Math.round(r.rate * 100)}%` : ""}</td>
-      <td class="num"><span class="rk ${rankOf(r.acc)}">${rankOf(r.acc)}</span> ${r.acc}%</td><td class="num">${r.score}</td><td class="num">${r.maxCombo}</td>
+      <td class="num"><span class="rk ${rankOf(pointsOf(r))}">${rankOf(pointsOf(r))}</span> ${r.acc}%</td><td class="num">${pointsText(pointsOf(r))}</td><td class="num">${r.maxCombo}</td>
       <td class="num">${r.perfect}/${r.ok}/${r.bad}/${r.miss}</td></tr>`).join("");
     this.plays = p;
     return `<div class="dr-row"><button type="button" data-db="back">◀ 모든 곡</button><b>${esc(g.title)}</b> <span class="hint">${esc(g.artist)}</span></div>
@@ -113,7 +113,7 @@ export class Dashboard {
       if (!c) { tip.hidden = true; return; }
       const r = this.plays[+c.dataset.i];
       tip.hidden = false;
-      tip.innerHTML = `<b>${r.acc}%</b> ${r.score}점<br><small>${new Date(r.time).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" })}</small>`;
+      tip.innerHTML = `<b>${r.acc}%</b> ${pointsText(pointsOf(r))}점<br><small>${new Date(r.time).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" })}</small>`;
       const box = wrap.getBoundingClientRect();
       tip.style.left = `${e.clientX - box.left + 12}px`;
       tip.style.top = `${e.clientY - box.top - 10}px`;

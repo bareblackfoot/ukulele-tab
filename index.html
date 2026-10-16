@@ -6,14 +6,25 @@
 <title>우쿨렐레 코드 악보</title>
 <meta name="description" content="유튜브에 맞춰 재생하는 우쿨렐레 코드·TAB 악보. 위쪽에 다음 코드 운지가 뜸.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3v13' stroke='%23a8743f' stroke-width='3'/%3E%3Ccircle cx='16' cy='22' r='8' fill='%23a8743f'/%3E%3Ccircle cx='16' cy='22' r='2.5' fill='%23fff'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/app.css?v=cfbe5b3918">
+<link rel="stylesheet" href="css/app.css?v=2270ee0a13">
 <!-- importmap -->
-<script type="importmap">{"imports":{"./js/audio.js":"./js/audio.js?v=cfbe5b3918","./js/bridge.js":"./js/bridge.js?v=cfbe5b3918","./js/chordbar.js":"./js/chordbar.js?v=cfbe5b3918","./js/chords.js":"./js/chords.js?v=cfbe5b3918","./js/dashboard.js":"./js/dashboard.js?v=cfbe5b3918","./js/diagram.js":"./js/diagram.js?v=cfbe5b3918","./js/drills.js":"./js/drills.js?v=cfbe5b3918","./js/drillview.js":"./js/drillview.js?v=cfbe5b3918","./js/dsp.js":"./js/dsp.js?v=cfbe5b3918","./js/editor.js":"./js/editor.js?v=cfbe5b3918","./js/fingering.js":"./js/fingering.js?v=cfbe5b3918","./js/instrument.js":"./js/instrument.js?v=cfbe5b3918","./js/lane.js":"./js/lane.js?v=cfbe5b3918","./js/lyrics.js":"./js/lyrics.js?v=cfbe5b3918","./js/main.js":"./js/main.js?v=cfbe5b3918","./js/model.js":"./js/model.js?v=cfbe5b3918","./js/pitchcolor.js":"./js/pitchcolor.js?v=cfbe5b3918","./js/pitchgame.js":"./js/pitchgame.js?v=cfbe5b3918","./js/pitchlane.js":"./js/pitchlane.js?v=cfbe5b3918","./js/practice.js":"./js/practice.js?v=cfbe5b3918","./js/records.js":"./js/records.js?v=cfbe5b3918","./js/sheet.js":"./js/sheet.js?v=cfbe5b3918","./js/site.js":"./js/site.js?v=cfbe5b3918","./js/strumfit.js":"./js/strumfit.js?v=cfbe5b3918","./js/strumgame.js":"./js/strumgame.js?v=cfbe5b3918","./js/strums.js":"./js/strums.js?v=cfbe5b3918","./js/strumview.js":"./js/strumview.js?v=cfbe5b3918","./js/youtube.js":"./js/youtube.js?v=cfbe5b3918"}}</script>
+<script type="importmap">{"imports":{"./js/audio.js":"./js/audio.js?v=2270ee0a13","./js/bridge.js":"./js/bridge.js?v=2270ee0a13","./js/chordbar.js":"./js/chordbar.js?v=2270ee0a13","./js/chords.js":"./js/chords.js?v=2270ee0a13","./js/dashboard.js":"./js/dashboard.js?v=2270ee0a13","./js/diagram.js":"./js/diagram.js?v=2270ee0a13","./js/drills.js":"./js/drills.js?v=2270ee0a13","./js/drillview.js":"./js/drillview.js?v=2270ee0a13","./js/dsp.js":"./js/dsp.js?v=2270ee0a13","./js/editor.js":"./js/editor.js?v=2270ee0a13","./js/fingering.js":"./js/fingering.js?v=2270ee0a13","./js/instrument.js":"./js/instrument.js?v=2270ee0a13","./js/lane.js":"./js/lane.js?v=2270ee0a13","./js/lyrics.js":"./js/lyrics.js?v=2270ee0a13","./js/main.js":"./js/main.js?v=2270ee0a13","./js/model.js":"./js/model.js?v=2270ee0a13","./js/pitchcolor.js":"./js/pitchcolor.js?v=2270ee0a13","./js/pitchgame.js":"./js/pitchgame.js?v=2270ee0a13","./js/pitchlane.js":"./js/pitchlane.js?v=2270ee0a13","./js/practice.js":"./js/practice.js?v=2270ee0a13","./js/records.js":"./js/records.js?v=2270ee0a13","./js/sheet.js":"./js/sheet.js?v=2270ee0a13","./js/site.js":"./js/site.js?v=2270ee0a13","./js/strumfit.js":"./js/strumfit.js?v=2270ee0a13","./js/strumgame.js":"./js/strumgame.js?v=2270ee0a13","./js/strums.js":"./js/strums.js?v=2270ee0a13","./js/strumview.js":"./js/strumview.js?v=2270ee0a13","./js/youtube.js":"./js/youtube.js?v=2270ee0a13"}}</script>
 <!-- /importmap -->
 </head>
 <body>
+<aside class="songbar" aria-label="악보 목록">
+  <div class="sb-head"><b>악보</b><button type="button" data-act="songbar" title="목록 접기">접기</button></div>
+  <input type="search" class="sb-filter" placeholder="제목·가수 찾기">
+  <div class="sb-scroll">
+    <h3 class="sb-mine-part" hidden title="이 PC의 구글 드라이브 우쿨렐레 폴더">내 악보 <small class="sb-count"></small></h3>
+    <div class="sb-list sb-mine sb-mine-part" hidden></div>
+    <h3>예제</h3>
+    <div class="sb-list sb-examples"></div>
+  </div>
+</aside>
 <div class="app">
   <header class="topbar">
+    <button type="button" class="toggle sb-toggle" data-act="songbar" aria-pressed="false" title="왼쪽 악보 목록 열고 접기">☰ 악보</button>
     <div class="brand"><span class="logo" aria-hidden="true"></span><b>우쿨렐레 코드 악보</b></div>
     <span class="viewtabs site-switch" role="group" aria-label="악기"></span>
     <span class="viewtabs kind-switch" role="group" aria-label="기타 종류" hidden>
@@ -115,13 +126,14 @@
       </span>
       <label>입력 <select class="g-input"><option value="mic">마이크</option><option value="keys">키보드 F·J (박자만)</option></select></label>
       <button type="button" class="g-state" data-act="g-mic" title="마이크 켜고 끄기">준비</button>
+      <div class="g-score" title="100점 만점. 곡의 음마다 Perfect 1, Ok 2/3, Bad 1/3, Miss 0을 더해 곡 전체 음 수로 나눔. 곡이 지나가며 0점에서 올라감"><small>점수</small><b>0.0</b><small>/ 100</small></div>
     </div>
     <div class="g-diag">마이크 <b class="g-mic">--</b> · 들린 코드/음 <b class="g-heard">--</b> · 음량 <i class="g-meter"><i></i></i></div>
     <div class="g-lane-wrap"><div class="g-lane" aria-hidden="true"></div><div class="g-judge" aria-hidden="true"></div><div class="g-combo" aria-hidden="true"></div></div>
     <div class="g-counts">
       <span class="perfect">Perfect <b data-c="perfect">0</b></span><span class="ok">Ok <b data-c="ok">0</b></span>
       <span class="bad">Bad <b data-c="bad">0</b></span><span class="miss">Miss <b data-c="miss">0</b></span>
-      <span>콤보 <b data-c="combo">0</b></span><span>점수 <b data-c="score">0</b></span>
+      <span>콤보 <b data-c="combo">0</b></span>
       <span>정확도 <b data-c="acc">0%</b></span><span>타이밍 <b data-c="tacc">0%</b></span><span class="roll-only">음 유지 <b data-c="hold">0%</b></span>
       <span title="음을 시작한 시각이 판정 박보다 평균 얼마나 늦었는지(+) 빨랐는지(-)">시작 박자 평균 <b data-c="davg">--</b></span><span class="roll-only" title="낸 음높이가 악보 음보다 평균 얼마나 높았는지(+) 낮았는지(-). 1 cent = 반음의 100분의 1">음높이 평균 <b data-c="cavg">--</b></span>
     </div>
@@ -297,17 +309,6 @@
   </form>
 </dialog>
 
-<dialog class="dlg-examples">
-  <form method="dialog">
-    <h2 class="lib-part" hidden>내 악보 <small class="hint">이 PC의 구글 드라이브 우쿨렐레 폴더</small></h2>
-    <input type="search" class="lib-filter lib-part" placeholder="제목·가수 찾기" hidden>
-    <div class="lib-list ex-list lib-part" hidden></div>
-    <h2>예제</h2>
-    <div class="ex-list ex-public"></div>
-    <div class="row end"><button value="close">닫기</button></div>
-  </form>
-</dialog>
-
 <dialog class="dlg-import">
   <form method="dialog">
     <h2>멜로디를 우쿨렐레로 옮기기</h2>
@@ -318,6 +319,6 @@
   </form>
 </dialog>
 
-<script type="module" src="js/main.js?v=cfbe5b3918"></script>
+<script type="module" src="js/main.js?v=2270ee0a13"></script>
 </body>
 </html>
