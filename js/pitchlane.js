@@ -1,6 +1,7 @@
 // Otamatone game lane, drawn like SPRED's practice mode: dark rows, one per semitone (higher notes higher),
-// placed as far apart as the notes are on the stem (SPRED's spacing), notes in SPRED's colours coming from the
-// right to the hit line, a beat always the same width. The pitch the microphone hears is a glowing green dot
+// placed as far apart as the notes are on the stem at SPRED's own scale (at 100 %, 1 screen px for 1 of SPRED's
+// layout: note rows 7 px, notes 21 px tall, rows 49 px apart near E3 and 13 near C6), notes in SPRED's colours
+// coming from the right to the hit line, a beat always the same width. The pitch the microphone hears is a glowing green dot
 // on the hit line, with the note there and how many cents off it is, and a line leaving to the left. The parts
 // of a passed note held on pitch stay bright, the rest dims. A judged note gets its grade above it (with the
 // combo, early/late and by how much) and a burst of sparks.
@@ -18,8 +19,10 @@ const LABEL = { perfect: "Perfect", ok: "Ok", bad: "Bad", miss: "Miss" };
 const FLASH_MS = 520;
 
 export class PitchLane {
-  constructor(root) {
+  // settings: () => the view settings (rollZoom: the rows' height in % of SPRED's)
+  constructor(root, settings = () => ({})) {
     this.root = root;
+    this.settings = settings;
     root.classList.add("pitch");
     this.cv = document.createElement("canvas");
     root.appendChild(this.cv);
@@ -37,31 +40,32 @@ export class PitchLane {
     const c = cv.getContext("2d");
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     const ts = practice.targets, tm = practice.player.tm, spb = s.stepsPerBeat;
-    if (this.ref !== ts || this.score !== s) {
+    const k = (Number(this.settings().rollZoom) || 100) / 100;
+    if (this.ref !== ts || this.score !== s || this.k !== k) {
       this.ref = ts;
       this.score = s;
+      this.k = k;
       const ms = ts.map((t) => t.midi);
       this.lo = (ms.length ? Math.min(...ms) : 60) - 1;
       this.hi = (ms.length ? Math.max(...ms) : 72) + 1;
       while (this.hi - this.lo < 8) { this.hi++; if (this.hi - this.lo < 8) this.lo--; }
-      this.pos = stemMap(stemOf(s));
+      const stem = stemOf(s);
+      this.pos = stemMap(stem);
+      this.rowH = ((stem && stem.row) || 7) * k;
       this.bars = computeBars(s);
       // the tracks switched off in 보기: drawn faint, not judged
       this.off = s.tracks.flatMap((t, ti) => (t.muted && !t.hidden ? t.notes.map((n) => ({ col: n.col, len: n.len, midi: midiOf(n, s.tuning, s.capo || 0), tk: trackKind(t, ti) })) : []))
         .sort((a, b) => a.col - b.col);
-      // as tall as the song's notes are apart on the stem (0.55 screen px for SPRED's 1, 0.42 on a phone); a song
-      // spread wider than what fits next to the sheet is drawn smaller
-      const small = window.innerWidth < 560, span = this.pos(this.hi) - this.pos(this.lo);
-      const maxH = small ? 280 : Math.max(300, Math.min(440, window.innerHeight * 0.5));
-      this.root.style.height = `${Math.round(Math.max(small ? 150 : 170, Math.min(maxH, span * (small ? 0.42 : 0.55) + 24)))}px`;
+      // as tall as the song's notes are apart on the stem, at SPRED's scale (nothing squeezed to fit)
+      this.root.style.height = `${Math.round(Math.max(120, (this.pos(this.hi) - this.pos(this.lo)) * k + 21 * k + 12))}px`;
     }
     const narrow = W < 560;
     const hitX = narrow ? 64 : 84;
     this.root.parentElement.style.setProperty("--hit", `${hitX}px`);
     const ppc = Math.max(70, Math.min(110, W / 9)) / spb;
     const X = (col) => hitX + (col - nowCol) * ppc;
-    const lo = this.lo, hi = this.hi, pos = this.pos, bh = 10, top = bh / 2 + 6;
-    const Y = (m) => top + ((pos(hi) - pos(m)) / (pos(hi) - pos(lo))) * (H - 2 * top);
+    const lo = this.lo, hi = this.hi, pos = this.pos, bh = 21 * k, rowH = this.rowH, top = bh / 2 + 6;
+    const Y = (m) => top + (pos(hi) - pos(m)) * k;
     const clamp = (m) => Math.max(lo - 0.4, Math.min(hi + 0.4, m));
     const colLo = nowCol - hitX / ppc - 1, colHi = nowCol + (W - hitX) / ppc + 1;
     const now = performance.now(), dt = Math.min(0.05, (now - (this.lastNow || now)) / 1000);
@@ -69,11 +73,11 @@ export class PitchLane {
 
     c.fillStyle = BG;
     c.fillRect(0, 0, W, H);
-    // rows: a band per note, narrower where the notes sit close on the stem
+    // rows: a band per note as tall as SPRED's note rows (narrower only where the rows would touch)
     const rows = [];
     for (let m = lo; m <= hi; m++) {
       const pc = ((m % 12) + 12) % 12, y = Y(m);
-      const h = Math.max(1, Math.min(bh, (m < hi ? y - Y(m + 1) : bh + 2) - 1.5, (m > lo ? Y(m - 1) - y : bh + 2) - 1.5));
+      const h = Math.max(1, Math.min(rowH, (m < hi ? y - Y(m + 1) : rowH + 2) - 1, (m > lo ? Y(m - 1) - y : rowH + 2) - 1));
       c.fillStyle = NATURAL.has(pc) ? ROW : ROW_SHARP;
       c.fillRect(0, y - h / 2, W, h);
       rows.push({ m, y, h, rank: pc === 0 ? 0 : NATURAL.has(pc) ? 1 : 2 });
@@ -136,9 +140,9 @@ export class PitchLane {
         }
         c.restore();
       }
-      if (x1 - x0 > 26) {
+      if (x1 - x0 > 26 * Math.max(0.6, k)) {
         c.fillStyle = noteText(g.tk || 0);
-        c.font = "bold 9.5px Arial, system-ui, sans-serif";
+        c.font = `bold ${Math.max(8, Math.round(13 * k))}px Arial, system-ui, sans-serif`;
         c.fillText(pitchName(g.midi), x0 + 3, y + 0.5);
       }
     }

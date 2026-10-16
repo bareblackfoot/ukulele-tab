@@ -210,8 +210,10 @@ export class SheetView {
     if (bars.length > 1 && bars[0].len < mainLen) i0 = 1; // pickup bar goes in front of the first line
     for (let i = i0; i < bars.length; i += perLine) lines.push(bars.slice(i === i0 && i0 ? 0 : i, i + perLine));
     if (!lines.length) lines.push(bars);
-    // a note's height is its place on the stem (SPRED's spacing), k screen px for SPRED's 1
-    const left = 34, right = 8, k = W >= 540 ? 0.45 : 0.36, bh = 8, top = 18, pos = stemMap(stemOf(score));
+    // a note's height is its place on the stem at SPRED's scale: at 100 % 1 screen px for 1 of SPRED's layout,
+    // note rows 7 px, notes 21 px tall (settings.rollZoom scales all three, as SPRED's zoom does)
+    const k = (Number(settings.rollZoom) || 100) / 100, stem = stemOf(score), pos = stemMap(stem);
+    const left = 34, right = 8, bh = 21 * k, rowH = ((stem && stem.row) || 7) * k, top = 18, fs = Math.max(7, Math.round(12 * k));
     const spb = score.stepsPerBeat;
     const tracks = score.tracks.map((t, ti) => ({ t, ti })).filter(({ t }) => !t.hidden);
     const notes = tracks.flatMap(({ t, ti }) => t.notes.map((n) => ({ col: n.col, len: n.len, m: midiOf(n, score.tuning, score.capo || 0), tk: trackKind(t, ti), off: !!t.muted })));
@@ -254,7 +256,7 @@ export class SheetView {
       const byPlace = [];
       for (let m = hi; m >= lo; m--) {
         const y = yOf(m), pc = ((m % 12) + 12) % 12;
-        const h = Math.max(1, Math.min(bh, (m < hi ? y - yOf(m + 1) : bh + 2) - 1.5, (m > lo ? yOf(m - 1) - y : bh + 2) - 1.5));
+        const h = Math.max(1, Math.min(rowH, (m < hi ? y - yOf(m + 1) : rowH + 2) - 1, (m > lo ? yOf(m - 1) - y : rowH + 2) - 1));
         under += `<rect class="${BLACK.has(pc) ? "roll-black" : "roll-row"}" x="${left}" y="${y - h / 2}" width="${xOf(end) - left}" height="${h}"/>`;
         if (pc === 0) g += `<line class="roll-c" x1="${left}" y1="${y + h / 2 + 0.5}" x2="${xOf(end)}" y2="${y + h / 2 + 0.5}"/>`;
         g += `<rect x="2" y="${y - h / 2}" width="${left - 5}" height="${h}" fill="${rowFill(m)}"/>`;
@@ -281,7 +283,7 @@ export class SheetView {
       for (const n of inLine) {
         const xa = Math.max(xOf(start), xOf(n.col)) + 0.5, xb = Math.min(xOf(end), xOf(n.col + n.len)) - 0.5, y = yOf(n.m);
         g += `<rect class="roll-note t${n.tk}${n.off ? " off" : ""}" x="${xa}" y="${y - bh / 2}" width="${Math.max(2, xb - xa)}" height="${bh}" rx="1.5" fill="${noteFill(n.m, n.tk)}"/>`;
-        if (xb - xa >= 19 && n.col >= start) g += `<text class="roll-label${n.off ? " off" : ""}" x="${xa + 2}" y="${y + 2.5}" fill="${noteText(n.tk)}">${pitchName(n.m)}</text>`;
+        if (xb - xa >= fs * 2.4 && n.col >= start) g += `<text class="roll-label${n.off ? " off" : ""}" x="${xa + 2}" y="${y + fs * 0.36}" style="font-size:${fs}px" fill="${noteText(n.tk)}">${pitchName(n.m)}</text>`;
       }
       // lyrics
       if (hasLyr) {

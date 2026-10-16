@@ -6,7 +6,7 @@
 //   hold: the share of frames on the note's pitch from just after its start to just before its end.
 //   kind (chosen in the game panel): "both" (start and hold count half each), "start", "hold"
 
-import { yin, rms } from "./dsp.js";
+import { yin, rms, harmonicShare } from "./dsp.js";
 
 const median = (a) => { const b = [...a].sort((x, y) => x - y), k = b.length >> 1; return b.length % 2 ? b[k] : (b[k - 1] + b[k]) / 2; };
 
@@ -16,6 +16,8 @@ const ACC = { perfect: 1, ok: 2 / 3, bad: 1 / 3, miss: 0 };
 const FRAME = 2048, HOP = 0.02;
 const JUMP = 2;              // semitones a frame may differ from a neighbouring frame (a slide is about this fast)
 const PEAK_FALL = 0.92;      // per frame: how fast the level of what was just played is forgotten (about 0.25 s)
+const LOW_CUT = 250;         // Hz: what is under it is not used to read pitch (the room's hum and rumble)
+const MIN_LEVEL = 0.01;      // a window quieter than this is not read at all (SPRED's own limit)
 
 export class PitchJudge {
   // timing: the timing windows of the game modes (TIMING in practice.js)
@@ -34,6 +36,7 @@ export class PitchJudge {
     this.held = null;    // {mid, m} the newest frame, passed on when the next one shows whether it stands alone
     this.before = null;  // the pitch of the frame passed on last
     this.peak = 0;       // level of what was just played
+    this.steady = null;  // {m, since} a pitch heard without changing, and since when
   }
 
   get kind() { return this.p.judgeKind; }
@@ -52,16 +55,25 @@ export class PitchJudge {
     const dur = FRAME / an.sr;
     if (this.nextT === null || this.nextT < an.lastT - 1) { this.nextT = an.lastT - dur; this.held = null; this.before = null; }
     while (this.nextT + dur <= an.lastT) {
-      const x = an.window(this.nextT, FRAME);
+      if (!an.hp) an.highPass(LOW_CUT);
+      const x = an.window(this.nextT, FRAME, true), raw = an.window(this.nextT, FRAME);
       const mid = this.nextT + dur / 2;
       this.nextT += HOP;
-      const m = this.pitchOf(x, an, mid);
+      const loud = !!raw && rms(raw) >= MIN_LEVEL;
+      const m = this.pitchOf(x, an, mid, loud);
+      const prev = this.held;
+      this.held = { mid, m, raw: loud ? raw : null };
+      if (!prev) continue;
+      // A new note: the window before may already hold it. Without its fundamental (the low cut) a low note
+      // is weaker, so a window half the old note and half a low new one still read the old one and the new
+      // note's start came a frame late; read that window as it came, and take the new note if it is there.
+      if (m !== null && prev.raw && (prev.m === null || Math.abs(prev.m - m) > JUMP)) {
+        const r = yin(prev.raw, an.sr, 150, 1400), mr = 69 + 12 * Math.log2(r.f0 / 440);
+        if (r.clarity >= 0.6 && Math.abs(mr - m) < 0.5) prev.m = mr;
+      }
       // a frame far from the frames on both sides of it is a wrong reading (the period found twice over in
       // a quiet frame, the slide of a finger lifting off the stem), not a note: the dot jumped to the bottom
       // of the lane and back
-      const prev = this.held;
-      this.held = { mid, m };
-      if (!prev) continue;
       const v = prev.m, near = (a) => a !== null && Math.abs(a - v) <= JUMP;
       this.take(prev.mid, v !== null && (near(this.before) || near(m)) ? v : null);
       this.before = v;
@@ -69,19 +81,28 @@ export class PitchJudge {
     if (this.trail.length > 500) this.trail.splice(0, this.trail.length - 500);
   }
 
-  // the pitch in one window (MIDI, fractional), or null for the room, a sound much quieter than what was just
-  // played (a finger letting go) or a sound with no clear pitch
-  pitchOf(x, an, t) {
+  // the pitch in one window of the high-passed sound (MIDI, fractional), or null for the room, a sound much
+  // quieter than what was just played (a finger letting go) or a sound with no clear pitch; loud: the window as
+  // it came reaches MIN_LEVEL
+  pitchOf(x, an, t, loud = true) {
     if (!x) return null;
     const lv = rms(x);
     this.peak = Math.max(lv, (this.peak || 0) * PEAK_FALL);
-    if (lv < Math.max(an.noise * 4, 0.002) || lv < this.peak / 8) return null;
+    if (!loud || lv < Math.max(an.hp.noise * 4, 0.0015) || lv < this.peak / 8) return null;
     // a sound starting from quiet must be clearly pitched (talking, music in the room); going on from a pitch,
     // less so (a window half one note, half the next)
     const { f0, clarity } = yin(x, an.sr, 150, 1400);
-    if (clarity < (this.held && this.held.m !== null ? 0.6 : 0.75) || !(f0 > 0)) return null;
-    an.toneT = t; // a held note keeps the room estimate from climbing to it (then quiet notes were not heard)
-    return 69 + 12 * Math.log2(f0 / 440);
+    const going = !!this.held && this.held.m !== null;
+    if (clarity < (going ? 0.6 : 0.75) || !(f0 > 0)) return null;
+    // a pitch with no harmonics is the room (a band of low noise, a fan tone), not the otamatone: the
+    // otamatone has 0.3 to 0.9 of its sound there, those under 0.1 (rarely 0.15)
+    if (harmonicShare(x, an.sr, f0) < (going ? 0.1 : 0.15)) return null;
+    const m = 69 + 12 * Math.log2(f0 / 440);
+    // a held note keeps the room estimate from climbing to it (then quiet notes were not heard); a pitch that
+    // has not moved for 10 s is more likely the room (a fan, a hum) and may become the room level
+    if (!this.steady || Math.abs(m - this.steady.m) > 0.5) this.steady = { m, since: t };
+    if (t - this.steady.since < 10) an.toneT = t;
+    return m;
   }
 
   take(mid, m) {
@@ -177,5 +198,6 @@ export class PitchJudge {
     this.nextT = null;
     this.held = null;
     this.before = null;
+    this.steady = null;
   }
 }

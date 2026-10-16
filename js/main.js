@@ -34,7 +34,8 @@ const store = {
 const DEFAULT_SETTINGS = { miniDiagrams: true, showTab: false, follow: true, orient: "h", upcoming: 4, barsPerLine: 0,
   electric: false, power: false, drive: "clean", leadHigh: true, // electric guitar mode (guitar site only)
   lead: false, leadTrack: "",                                        // lead view: one line's TAB big
-  parts: {} };                                                       // otamatone: tracks played (id -> on)
+  parts: {},                                                         // otamatone: tracks played (id -> on)
+  rollZoom: window.innerWidth < 560 ? 60 : 100 };                   // otamatone: note rows' height, % of SPRED's
 const settings = { ...DEFAULT_SETTINGS, ...store.get(skey("settings"), {}) };
 
 let score = newScore();
@@ -73,7 +74,7 @@ const editor = new Editor($(".editor"), {
 });
 
 const practice = new Practice(engine, player, {
-  lane: INST.roll ? new PitchLane($(".g-lane")) : new GameLane($(".g-lane"), () => settings),
+  lane: INST.roll ? new PitchLane($(".g-lane"), () => settings) : new GameLane($(".g-lane"), () => settings),
   judge: $(".g-judge"),
   combo: $(".g-combo"),
   onMark: (col, grade) => sheet.mark(col, grade),

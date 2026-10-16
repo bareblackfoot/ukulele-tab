@@ -1,4 +1,5 @@
-// Otamatone game judging (js/pitchgame.js) on synthesized sound: a buzzy square wave at the played pitches is
+// Otamatone game judging (js/pitchgame.js) on synthesized sound: a buzzy saw wave at the played pitches (all
+// harmonics, as the otamatone has; a square wave has only the odd ones) is
 // pushed through the microphone analyzer as the browser would, and the grades are checked.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -37,7 +38,7 @@ function render(played, total, detune = 0) {
     const n = played.find((q) => t >= q.t0 && t < q.t1);
     if (!n) continue;
     phase = (phase + 440 * 2 ** ((n.midi - 69 + detune / 100) / 12) / SR) % 1;
-    x[i] += phase < 0.5 ? 0.2 : -0.2;
+    x[i] += 0.35 * (2 * phase - 1);
   }
   return x;
 }
@@ -159,7 +160,7 @@ test("rows as far apart as the notes are on the stem: the sheet's own SPRED layo
 
 // the pitch the lane shows (pj.live) for a sound given by amp(t) and midi(t) over room noise (hiss and rumble): a saw wave
 // through a soft low-pass, smooth like the otamatone, so a held note gives no new attacks
-function heard(secs, amp, midi) {
+function heard(secs, amp, midi, noise = () => 0) {
   const p = { mode: "std", judgeKind: "both", offsetMs: 0, targets: [], player: { playing: false, rate: 1 }, scoreTimeOf: (t) => t };
   const pj = new PitchJudge(p, TIMING), an = new MicAnalyzer(SR);
   const x = new Float32Array(Math.ceil(secs * SR));
@@ -168,7 +169,7 @@ function heard(secs, amp, midi) {
   for (let i = 0; i < x.length; i++) {
     const t = i / SR, a = amp(t);
     rumble = 0.995 * rumble + rnd() * 0.02;
-    x[i] = rnd() * 0.0015 + rumble * 0.012;
+    x[i] = rnd() * 0.0015 + rumble * 0.012 + noise(t, rnd);
     if (a <= 0) continue;
     phase = (phase + 440 * 2 ** ((midi(t) - 69) / 12) / SR) % 1;
     lp += 0.25 * (2 * phase - 1 - lp);
@@ -183,8 +184,9 @@ function heard(secs, amp, midi) {
 }
 
 test("a quiet note held for seconds stays heard (the room estimate does not climb to it)", () => {
-  // a loud note, a short rest, then a note 26 dB quieter started softly (few attacks heard) and held
-  const fr = heard(9, (t) => (t > 0.5 && t < 1.5 ? 0.3 : t > 1.7 ? 0.015 * Math.min(1, (t - 1.7) / 0.3) : 0), () => 64)
+  // a loud note, a short rest, then a note 26 dB quieter (still over the level SPRED and this read from)
+  // started softly (few attacks heard) and held
+  const fr = heard(9, (t) => (t > 0.5 && t < 1.5 ? 0.8 : t > 1.7 ? 0.04 * Math.min(1, (t - 1.7) / 0.3) : 0), () => 64)
     .filter((f) => f.t > 2.1);
   const on = fr.filter((f) => f.m !== null && Math.abs(f.m - 64) < 0.3).length;
   assert.ok(on / fr.length > 0.95, `${on} of ${fr.length}`);
@@ -197,4 +199,25 @@ test("letting go of the stem: the slide down and the quiet tail do not show as a
   const low = fr.filter((f) => f.m !== null && f.m < 64);
   assert.deepEqual(low, []);
   assert.ok(fr.filter((f) => f.t > 0.6 && f.t < 1.4).every((f) => f.m !== null && Math.abs(f.m - 67) < 0.3));
+});
+
+// noise between about 130 and 220 Hz (a hum of the room or the desk), rms about `level`
+function lowBand(level) {
+  const w0 = (2 * Math.PI * 170) / SR, al = Math.sin(w0) / 6, a0 = 1 + al, cs = Math.cos(w0);
+  const st = [{ x1: 0, x2: 0, y1: 0, y2: 0 }, { x1: 0, x2: 0, y1: 0, y2: 0 }];
+  const bp = (x, q) => { const y = (al * x - al * q.x2 + 2 * cs * q.y1 - (1 - al) * q.y2) / a0; q.x2 = q.x1; q.x1 = x; q.y2 = q.y1; q.y1 = y; return y; };
+  return (t, rnd) => bp(bp(rnd(), st[0]), st[1]) * 40 * level;
+}
+
+test("low noise in the room is not read as a low note, alone or under the otamatone", () => {
+  // the noise alone, loud enough to pass the level limit: no pitch
+  const quiet = heard(3, () => 0, () => 64, lowBand(0.03)).filter((f) => f.t > 0.5 && f.m !== null);
+  assert.deepEqual(quiet, []);
+  // under notes, at half their level: every reading is the note played, none down in the noise
+  const notes = [64, 69, 62, 67, 72, 60];
+  const fr = heard(4, (t) => (t > 0.5 && t < 3.5 ? 0.15 : 0), (t) => notes[Math.min(5, Math.floor((t - 0.5) / 0.5))], lowBand(0.04))
+    .filter((f) => f.t > 0.62 && f.t < 3.45 && (f.t - 0.5) % 0.5 > 0.08);
+  const played = (t) => notes[Math.min(5, Math.floor((t - 0.5) / 0.5))];
+  const off = fr.filter((f) => f.m === null || Math.abs(f.m - played(f.t)) > 0.5);
+  assert.ok(off.length <= fr.length * 0.05, JSON.stringify(off.slice(0, 5)));
 });
